@@ -14,6 +14,14 @@ menuconfig RC_CORE
 	  Say Y when you have a TV or an IR device.
 
 if RC_CORE
+
+config SPI_PEELIR
+	tristate "PEELIR"
+	default n
+
+	help
+	  Enable this option if you use peelir
+
 source "drivers/media/rc/keymaps/Kconfig"
 
 config LIRC
