@@ -347,6 +347,15 @@ bool socinfo_get_part_info(enum subset_part_type part);
 enum pmic_model socinfo_get_pmic_model(void);
 uint32_t socinfo_get_pmic_die_revision(void);
 int __init socinfo_init(void) __must_check;
+
+#define HARDWARE_PLATFORM_UNKNOWN 0
+#define HARDWARE_PLATFORM_SAGIT 1
+#define HARDWARE_PLATFORM_CHIRON 3
+#define HARDWARE_PLATFORM_CHIRON_S 4
+
+uint32_t get_hw_version_platform(void);
+uint32_t get_hw_version_major(void);
+uint32_t get_hw_version_minor(void);
 int socinfo_get_feature_code(void);
 int socinfo_get_pcode(void);
 char *socinfo_get_partinfo_details(unsigned int part_id);
