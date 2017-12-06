@@ -304,7 +304,7 @@ static struct freq_attr *msm_freq_attr[] = {
 
 static void msm_cpufreq_ready(struct cpufreq_policy *policy)
 {
-	struct device_node *np;
+	struct device_node *np, *lmh_node;
 	unsigned int cpu = policy->cpu;
 
 	if (cdev[cpu])
@@ -319,6 +319,16 @@ static void msm_cpufreq_ready(struct cpufreq_policy *policy)
 	 * thermal DT code takes care of matching them.
 	 */
 	if (of_find_property(np, "#cooling-cells", NULL)) {
+		lmh_node = of_parse_phandle(np, "qcom,lmh-dcvs", 0);
+		if (lmh_node) {
+			if (!of_property_read_bool(lmh_node,
+					"qcom,no-cooling-device-register")) {
+				of_node_put(lmh_node);
+				goto ready_exit;
+			}
+			of_node_put(lmh_node);
+		}
+
 		cdev[cpu] = cpufreq_platform_cooling_register(policy, NULL);
 		if (IS_ERR(cdev[cpu])) {
 			pr_err("running cpufreq for CPU%d without cooling dev: %ld\n",
@@ -326,6 +336,7 @@ static void msm_cpufreq_ready(struct cpufreq_policy *policy)
 			cdev[cpu] = NULL;
 		}
 	}
+ready_exit:
 	of_node_put(np);
 }
 
