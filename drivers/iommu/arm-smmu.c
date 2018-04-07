@@ -2363,6 +2363,9 @@ static void arm_smmu_write_context_bank(struct arm_smmu_device *smmu, int idx,
 		writel_relaxed(cb->mair[1], cb_base + ARM_SMMU_CB_S1_MAIR1);
 	}
 
+	/* ACTLR (implementation defined) */
+	writel_relaxed(cb->actlr, cb_base + ARM_SMMU_CB_ACTLR);
+
 	/* SCTLR */
 	reg = SCTLR_CFCFG | SCTLR_CFIE | SCTLR_CFRE | SCTLR_AFE | SCTLR_TRE;
 
@@ -2675,11 +2678,9 @@ static int arm_smmu_init_domain_context(struct iommu_domain *domain,
 		/* Initialise the context bank with our page table cfg */
 		arm_smmu_init_context_bank(smmu_domain,
 						&smmu_domain->pgtbl_cfg);
+		arm_smmu_arch_init_context_bank(smmu_domain, dev);
 		arm_smmu_write_context_bank(smmu, cfg->cbndx,
 					    smmu_domain->attributes);
-
-		arm_smmu_arch_init_context_bank(smmu_domain, dev);
-
 		/* for slave side secure, we may have to force the pagetable
 		 * format to V8L.
 		 */
@@ -5505,6 +5506,12 @@ static int arm_smmu_device_cfg_probe(struct arm_smmu_device *smmu)
 				 sizeof(*smmu->cbs), GFP_KERNEL);
 	if (!smmu->cbs)
 		return -ENOMEM;
+	for (i = 0; i < smmu->num_context_banks; i++) {
+		void __iomem *cb_base;
+
+		cb_base = ARM_SMMU_CB(smmu, i);
+		smmu->cbs[i].actlr = readl_relaxed(cb_base + ARM_SMMU_CB_ACTLR);
+	}
 
 	/* ID2 */
 	id = readl_relaxed(gr0_base + ARM_SMMU_GR0_ID2);
@@ -6445,24 +6452,14 @@ static void qsmmuv500_init_cb(struct arm_smmu_domain *smmu_domain,
 				struct device *dev)
 {
 	struct arm_smmu_device *smmu = smmu_domain->smmu;
+	struct arm_smmu_cb *cb = &smmu->cbs[smmu_domain->cfg.cbndx];
 	struct qsmmuv500_group_iommudata *iommudata =
 		to_qsmmuv500_group_iommudata(dev->iommu_group);
-	void __iomem *cb_base;
-	const struct iommu_gather_ops *tlb;
 
 	if (!iommudata->has_actlr)
 		return;
 
-	tlb = smmu_domain->pgtbl_cfg.tlb;
-	cb_base = ARM_SMMU_CB(smmu, smmu_domain->cfg.cbndx);
-
-	writel_relaxed(iommudata->actlr, cb_base + ARM_SMMU_CB_ACTLR);
-
-	/*
-	 * Flush the context bank after modifying ACTLR to ensure there
-	 * are no cache entries with stale state
-	 */
-	tlb->tlb_flush_all(smmu_domain);
+	cb->actlr = iommudata->actlr;
 }
 
 static int qsmmuv500_tbu_register(struct device *dev, void *cookie)
