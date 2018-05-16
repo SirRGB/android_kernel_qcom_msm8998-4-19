@@ -378,6 +378,8 @@ struct smb_charger {
 	int			pulse_cnt;
 
 	int			die_health;
+	/* last soc */
+	int			last_soc;
 };
 
 int smblib_read(struct smb_charger *chg, u16 addr, u8 *val);
