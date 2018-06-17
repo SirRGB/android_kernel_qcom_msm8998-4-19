@@ -2671,19 +2671,6 @@ static struct clk_branch gcc_mss_cfg_ahb_clk = {
 	},
 };
 
-static struct clk_branch gcc_mss_q6_bimc_axi_clk = {
-	.halt_reg = 0x8A040,
-	.clkr = {
-		.enable_reg = 0x8A040,
-		.enable_mask = BIT(0),
-		.hw.init = &(struct clk_init_data) {
-			.name = "gcc_mss_q6_bimc_axi_clk",
-			.flags = CLK_IS_CRITICAL,
-			.ops = &clk_branch2_ops,
-		},
-	},
-};
-
 static struct clk_branch gcc_mss_mnoc_bimc_axi_clk = {
 	.halt_reg = 0x8A004,
 	.halt_check = BRANCH_HALT,
@@ -2872,7 +2859,6 @@ static const char *const debug_mux_parent_names[] = {
 	"gcc_dcc_ahb_clk",
 	"ipa_clk",
 	"gcc_mss_cfg_ahb_clk",
-	"gcc_mss_q6_bimc_axi_clk",
 	"gcc_mss_mnoc_bimc_axi_clk",
 	"gcc_mss_snoc_axi_clk",
 	"gcc_gpu_cfg_ahb_clk",
@@ -2972,7 +2958,6 @@ static struct clk_debug_mux gcc_debug_mux = {
 		{ "gcc_dcc_ahb_clk",				0x0119 },
 		{ "ipa_clk",					0x011b },
 		{ "gcc_mss_cfg_ahb_clk",			0x011f },
-		{ "gcc_mss_q6_bimc_axi_clk",			0x0124 },
 		{ "gcc_mss_mnoc_bimc_axi_clk",			0x0120 },
 		{ "gcc_mss_snoc_axi_clk",			0x0123 },
 		{ "gcc_gpu_cfg_ahb_clk",			0x013b },
@@ -3132,7 +3117,6 @@ static struct clk_regmap *gcc_msm8998_clocks[] = {
 	[GCC_PRNG_AHB_CLK] = &gcc_prng_ahb_clk.clkr,
 	[GCC_BOOT_ROM_AHB_CLK] = &gcc_boot_rom_ahb_clk.clkr,
 	[GCC_MSS_CFG_AHB_CLK] = &gcc_mss_cfg_ahb_clk.clkr,
-	[GCC_MSS_Q6_BIMC_AXI_CLK] = &gcc_mss_q6_bimc_axi_clk.clkr,
 	[GCC_MSS_MNOC_BIMC_AXI_CLK] = &gcc_mss_mnoc_bimc_axi_clk.clkr,
 	[GCC_MSS_SNOC_AXI_CLK] = &gcc_mss_snoc_axi_clk.clkr,
 	[GCC_HDMI_CLKREF_CLK] = &gcc_hdmi_clkref_clk.clkr,
