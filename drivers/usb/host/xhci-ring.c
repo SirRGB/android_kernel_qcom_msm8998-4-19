@@ -58,6 +58,8 @@
 #include "xhci.h"
 #include "xhci-trace.h"
 #include "xhci-mtk.h"
+extern void kick_usbpd_vbus_sm(void);
+extern bool is_xiaomi_headset;
 
 /*
  * Returns zero if the TRB isn't in this segment, otherwise it returns the DMA
@@ -287,8 +289,13 @@ void xhci_ring_cmd_db(struct xhci_hcd *xhci)
 
 static bool xhci_mod_cmd_timer(struct xhci_hcd *xhci)
 {
+	unsigned int delay = xhci->current_cmd->timeout_ms;
+
+	if (is_xiaomi_headset)
+		delay = 1000;
+
 	return mod_delayed_work(system_wq, &xhci->cmd_timer,
-			msecs_to_jiffies(xhci->current_cmd->timeout_ms));
+			msecs_to_jiffies(delay));
 }
 
 static struct xhci_command *xhci_next_queued_cmd(struct xhci_hcd *xhci)
@@ -345,6 +352,7 @@ static int xhci_abort_cmd_ring(struct xhci_hcd *xhci, unsigned long flags)
 	union xhci_trb *new_deq		= xhci->cmd_ring->dequeue;
 	u64 crcr;
 	int ret;
+	int delay;
 
 	xhci_dbg(xhci, "Abort command ring\n");
 
@@ -371,9 +379,18 @@ static int xhci_abort_cmd_ring(struct xhci_hcd *xhci, unsigned long flags)
 	 * In the future we should distinguish between -ENODEV and -ETIMEDOUT
 	 * and try to recover a -ETIMEDOUT with a host controller reset.
 	 */
+	if (is_xiaomi_headset) {
+		delay = 500 * 1000;
+	} else {
+		delay = 1000 * 1000;
+	}
+
 	ret = xhci_handshake_check_state(xhci, &xhci->op_regs->cmd_ring,
-			CMD_RING_RUNNING, 0, 1000 * 1000);
+			CMD_RING_RUNNING, 0, delay);
 	if (ret < 0) {
+		if (is_xiaomi_headset)
+			return -EPERM;
+
 		xhci_err(xhci, "Abort failed to stop command ring: %d\n", ret);
 		xhci_halt(xhci);
 		xhci_hc_died(xhci);
@@ -1376,6 +1393,7 @@ void xhci_handle_command_timeout(struct work_struct *work)
 	struct xhci_hcd *xhci;
 	unsigned long flags;
 	u64 hw_ring_state;
+	int ret;
 
 	xhci = container_of(to_delayed_work(work), struct xhci_hcd, cmd_timer);
 
@@ -1404,7 +1422,14 @@ void xhci_handle_command_timeout(struct work_struct *work)
 		/* Prevent new doorbell, and start command abort */
 		xhci->cmd_ring_state = CMD_RING_STATE_ABORTED;
 		xhci_dbg(xhci, "Command timeout\n");
-		xhci_abort_cmd_ring(xhci, flags);
+		ret = xhci_abort_cmd_ring(xhci, flags);
+		if (ret == -EPERM) {
+			xhci_err(xhci, "Abort command ring failed reset usb device\n");
+			xhci_cleanup_command_queue(xhci);
+			spin_unlock_irqrestore(&xhci->lock, flags);
+			kick_usbpd_vbus_sm();
+			return;
+		}
 		goto time_out_completed;
 	}
 
