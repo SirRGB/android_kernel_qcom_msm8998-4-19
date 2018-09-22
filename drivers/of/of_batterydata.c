@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2013-2019, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2018 XiaoMi, Inc.
  */
 
 #define pr_fmt(fmt)	"%s: " fmt, __func__
@@ -313,7 +314,11 @@ struct device_node *of_batterydata_get_best_profile(
 		int batt_id_kohm, const char *batt_type)
 {
 	struct batt_ids batt_ids;
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+	struct device_node *node, *best_node = NULL, *generic_node = NULL;
+#else
 	struct device_node *node, *best_node = NULL;
+#endif
 	const char *battery_type = NULL;
 	int delta = 0, best_delta = 0, best_id_kohm = 0, id_range_pct,
 		i = 0, rc = 0, limit = 0;
@@ -367,10 +372,23 @@ struct device_node *of_batterydata_get_best_profile(
 				}
 			}
 		}
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+		rc = of_property_read_string(node, "qcom,battery-type",
+							&battery_type);
+		if (!rc && strcmp(battery_type, "itech_3020mah") == 0)
+				generic_node = node;
+#endif
 	}
 
 	if (best_node == NULL) {
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+		/* now that best_node is null, there is no need to
+		 * check whether generic node is null. */
+		best_node = generic_node;
+		pr_err("No battery data found,use generic one\n");
+#else
 		pr_err("No battery data found\n");
+#endif
 		return best_node;
 	}
 
