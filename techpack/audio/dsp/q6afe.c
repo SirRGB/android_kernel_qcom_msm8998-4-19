@@ -24,6 +24,10 @@
 #include "adsp_err.h"
 #include "q6afecal-hwdep.h"
 
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+#include <dsp/apr_elliptic.h>
+#endif
+
 #define WAKELOCK_TIMEOUT	5000
 #define AFE_CLK_TOKEN	1024
 
@@ -1125,6 +1129,11 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 		atomic_set(&this_afe.clk_state, 0);
 		atomic_set(&this_afe.clk_status, 0);
 		wake_up(&this_afe.lpass_core_hw_wait);
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+	} else if (data->opcode == ULTRASOUND_OPCODE) {
+		if (data->payload)
+			elliptic_process_apr_payload(data->payload);
+#endif
 	} else if (data->payload_size) {
 		uint32_t *payload;
 		uint16_t port_id = 0;
@@ -1698,9 +1707,9 @@ done:
 	return rc;
 }
 
-static int q6afe_set_params(u16 port_id, int index,
-			    struct mem_mapping_hdr *mem_hdr,
-			    u8 *packed_param_data, u32 packed_data_size)
+int q6afe_set_params(u16 port_id, int index,
+		     struct mem_mapping_hdr *mem_hdr,
+		     u8 *packed_param_data, u32 packed_data_size)
 {
 	int ret = 0;
 
@@ -1731,9 +1740,9 @@ static int q6afe_set_params(u16 port_id, int index,
 					   packed_param_data, packed_data_size);
 }
 
-static int q6afe_pack_and_set_param_in_band(u16 port_id, int index,
-					    struct param_hdr_v3 param_hdr,
-					    u8 *param_data)
+int q6afe_pack_and_set_param_in_band(u16 port_id, int index,
+				     struct param_hdr_v3 param_hdr,
+				     u8 *param_data)
 {
 	u8 *packed_param_data = NULL;
 	int packed_data_size = sizeof(union param_hdrs) + param_hdr.param_size;
