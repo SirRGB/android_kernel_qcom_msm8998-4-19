@@ -767,9 +767,9 @@ config REGULATOR_QPNP
 	depends on SPMI
 	help
 	  This driver supports voltage regulators in Qualcomm Technologies, Inc.
-	  PMIC chips which comply with QPNP.  QPNP is a SPMI based PMIC
-	  implementation.  These chips provide several different varieties of
-	  LDO and switching regulators.  They also provide voltage switches and
+	  PMIC chips which comply with QPNP. QPNP is a SPMI based PMIC
+	  implementation. These chips provide several different varieties of
+	  LDO and switching regulators. They also provide voltage switches and
 	  boost regulators.
 
 config REGULATOR_RC5T583
@@ -1097,6 +1097,17 @@ config REGULATOR_CPR3
 	  rails, the CPR3 controller is able to propagate the voltage increase
 	  or decrease requests all the way to the PMIC without software
 	  involvement.
+
+config REGULATOR_CPR3_MMSS
+	bool "RBCPR3 regulator for MMSS"
+	depends on OF
+	select REGULATOR_CPR3
+	help
+	  This driver supports Qualcomm Technologies, Inc. MMSS graphics
+	  processor specific features. The MMSS CPR3 controller only uses one
+	  thread to monitor the MMSS voltage requirements. This driver reads
+	  initial voltage values out of hardware fuses and CPR target quotient
+	  values out of device tree.
 
 config REGULATOR_CPR4_MMSS_LDO
 	bool "RBCPR3 regulator for MMSS LDO"
