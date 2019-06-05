@@ -7,6 +7,9 @@
 #include <linux/clk-provider.h>
 #include "clk-regmap.h"
 
+#define ALPHA_POST_DIV_EVEN_SHIFT	8
+#define ALPHA_POST_DIV_ODD_SHIFT	12
+
 /* Alpha PLL types */
 enum {
 	CLK_ALPHA_PLL_TYPE_DEFAULT,
@@ -66,7 +69,7 @@ struct pll_vco {
 struct clk_alpha_pll {
 	u32 offset;
 	const u8 *regs;
-	struct alpha_pll_config *config;
+	const struct alpha_pll_config *config;
 
 	u32 *soft_vote;
 	u32 soft_vote_mask;
@@ -171,6 +174,9 @@ extern const struct clk_ops clk_alpha_pll_postdiv_zonda_ops;
 
 extern const struct clk_ops clk_alpha_pll_agera_ops;
 extern const struct clk_ops clk_alpha_pll_slew_ops;
+
+extern const struct clk_div_table clk_alpha_div_table[6];
+extern const struct clk_div_table clk_alpha_odd_div_table[5];
 
 void clk_alpha_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
 			     const struct alpha_pll_config *config);
