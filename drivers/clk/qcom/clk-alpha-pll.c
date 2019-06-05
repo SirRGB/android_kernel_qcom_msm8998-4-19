@@ -1500,12 +1500,20 @@ clk_alpha_pll_postdiv_recalc_rate(struct clk_hw *hw, unsigned long parent_rate)
 	return parent_rate >> fls(ctl);
 }
 
-static const struct clk_div_table clk_alpha_div_table[] = {
+const struct clk_div_table clk_alpha_div_table[] = {
 	{ 0x0, 1 },
 	{ 0x1, 2 },
 	{ 0x3, 4 },
 	{ 0x7, 8 },
 	{ 0xf, 16 },
+	{ }
+};
+
+const struct clk_div_table clk_alpha_odd_div_table[] = {
+	{ 0x0, 1 },
+	{ 0x3, 3 },
+	{ 0x5, 5 },
+	{ 0x7, 7 },
 	{ }
 };
 
@@ -1600,10 +1608,20 @@ int clk_fabia_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
 			     const struct alpha_pll_config *config)
 {
 	u32 val, mask;
+	int ret;
 
 	if (!config) {
 		pr_err("PLL configuration missing.\n");
 		return -EINVAL;
+	}
+
+	ret = regmap_read(regmap, PLL_MODE(pll), &val);
+	if (ret)
+		return ret;
+
+	if (val & PLL_LOCK_DET) {
+		pr_warn("PLL is already enabled. Skipping configuration.\n");
+		return 0;
 	}
 
 	if (config->l)
@@ -1649,6 +1667,9 @@ int clk_fabia_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
 
 	clk_alpha_pll_custom_configure(pll, regmap, config);
 
+	if (pll->flags & SUPPORTS_FSM_MODE)
+		qcom_pll_set_fsm_mode(regmap, PLL_MODE(pll), 6, 0);
+
 	regmap_update_bits(regmap, PLL_MODE(pll), PLL_UPDATE_BYPASS,
 							PLL_UPDATE_BYPASS);
 
@@ -1673,7 +1694,11 @@ static int alpha_pll_fabia_enable(struct clk_hw *hw)
 		ret = clk_enable_regmap(hw);
 		if (ret)
 			return ret;
-		return wait_for_pll_enable_active(pll);
+		ret = wait_for_pll_enable_active(pll);
+		if (ret == 0)
+			if (pll->flags & SUPPORTS_FSM_VOTE)
+				*pll->soft_vote |= (pll->soft_vote_mask);
+		return ret;
 	}
 
 	ret = regmap_read(regmap, PLL_OPMODE(pll), &opmode_val);
@@ -1744,8 +1769,13 @@ static void alpha_pll_fabia_disable(struct clk_hw *hw)
 		return;
 
 	/* If in FSM mode, just unvote it */
-	if (val & PLL_FSM_ENA) {
-		clk_disable_regmap(hw);
+	if (val & PLL_VOTE_FSM_ENA) {
+		if (pll->flags & SUPPORTS_FSM_VOTE) {
+			*pll->soft_vote &= ~(pll->soft_vote_mask);
+			if (!*pll->soft_vote)
+				clk_disable_regmap(hw);
+		} else
+			clk_disable_regmap(hw);
 		return;
 	}
 
