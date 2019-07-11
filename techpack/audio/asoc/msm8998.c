@@ -8049,8 +8049,10 @@ static int msm_asoc_machine_remove(struct platform_device *pdev)
 		regulator_put(pdata->us_n_power);
 #endif
 
-	if (gpio_is_valid(pdata->us_euro_gpio))
+	if (gpio_is_valid(pdata->us_euro_gpio)) {
 		gpio_free(pdata->us_euro_gpio);
+		pdata->us_euro_gpio = 0;
+	}
 	i2s_auxpcm_deinit();
 
 	snd_soc_unregister_card(card);
