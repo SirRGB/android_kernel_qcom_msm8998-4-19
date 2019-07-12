@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
- * Copyright (C) 2018 XiaoMi, Inc.
  */
 
 #include <linux/kernel.h>
@@ -17,9 +16,6 @@
 #include <linux/of_gpio.h>
 #include <linux/of_device.h>
 #include <linux/uaccess.h>
-#ifdef CONFIG_MACH_XIAOMI_MSM8998
-#include <linux/wakelock.h>
-#endif
 #include "nq-nci.h"
 #include <linux/clk.h>
 #ifdef CONFIG_COMPAT
@@ -47,10 +43,6 @@ static const struct of_device_id msm_match_table[] = {
 };
 
 MODULE_DEVICE_TABLE(of, msm_match_table);
-
-#ifdef CONFIG_MACH_XIAOMI_MSM8998
-static struct wake_lock fieldon_wl;
-#endif
 
 struct nqx_dev {
 	wait_queue_head_t	read_wq;
@@ -345,12 +337,6 @@ static ssize_t nfc_read(struct file *filp, char __user *buf,
 		 */
 		return 0;
 	}
-
-#ifdef CONFIG_MACH_XIAOMI_MSM8998
-	if (((tmp[0] & 0xff) == 0x61) && ((tmp[1] & 0xff) == 0x07) && ((tmp[2] & 0xff) == 0x01)) {
-		wake_lock_timeout(&fieldon_wl, msecs_to_jiffies(3*1000));
-	}
-#endif
 #ifdef NFC_KERNEL_BU
 		dev_dbg(&nqx_dev->client->dev, "%s : NfcNciRx %x %x %x\n",
 			__func__, tmp[0], tmp[1], tmp[2]);
@@ -1704,10 +1690,6 @@ static int nqx_probe(struct i2c_client *client,
 	mutex_init(&nqx_dev->dev_ref_mutex);
 	spin_lock_init(&nqx_dev->irq_enabled_lock);
 
-#ifdef CONFIG_MACH_XIAOMI_MSM8998
-	wake_lock_init(&fieldon_wl, WAKE_LOCK_SUSPEND, "nfc_locker");
-#endif
-
 	r = alloc_chrdev_region(&nqx_dev->devno, 0, DEV_COUNT, DEVICE_NAME);
 	if (r < 0) {
 		dev_err(&client->dev,
@@ -1880,9 +1862,6 @@ static int nqx_remove(struct i2c_client *client)
 	/* optional gpio, not sure was configured in probe */
 	if (nqx_dev->ese_gpio > 0)
 		gpio_free(nqx_dev->ese_gpio);
-#ifdef CONFIG_MACH_XIAOMI_MSM8998
-	wake_lock_destroy(&fieldon_wl);
-#endif
 	gpio_free(nqx_dev->firm_gpio);
 	gpio_free(nqx_dev->irq_gpio);
 	gpio_free(nqx_dev->en_gpio);
