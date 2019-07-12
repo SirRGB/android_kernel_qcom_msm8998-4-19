@@ -213,6 +213,11 @@ struct afe_ctl {
 	u16 dtmf_gen_rx_portid;
 	struct audio_cal_info_spk_prot_cfg	prot_cfg;
 	struct afe_spkr_prot_calib_get_resp	calib_data;
+
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+	struct afe_ultrasound_calib_get_resp	ultrasound_calib_data;
+#endif
+
 	struct audio_cal_info_sp_th_vi_ftm_cfg	th_ftm_cfg;
 	struct audio_cal_info_sp_th_vi_v_vali_cfg	v_vali_cfg;
 	struct audio_cal_info_sp_ex_vi_ftm_cfg	ex_ftm_cfg;
@@ -2771,6 +2776,19 @@ static void afe_send_cal_spv4_tx(int port_id)
 	}
 
 }
+
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+/* ELUS Begin */
+afe_ultrasound_state_t elus_afe = {
+	.ptr_apr = &this_afe.apr,
+	.ptr_status = &this_afe.status,
+	.ptr_state = &this_afe.state,
+	.ptr_wait = this_afe.wait,
+	.timeout_ms = TIMEOUT_MS,
+	.ptr_ultrasound_calib_data = &this_afe.ultrasound_calib_data
+};
+/* ELUS End */
+#endif
 
 static void afe_send_cal_spkr_prot_tx(int port_id)
 {
