@@ -69,7 +69,7 @@ struct pll_vco {
 struct clk_alpha_pll {
 	u32 offset;
 	const u8 *regs;
-	struct alpha_pll_config *config;
+	const struct alpha_pll_config *config;
 
 	u32 *soft_vote;
 	u32 soft_vote_mask;
