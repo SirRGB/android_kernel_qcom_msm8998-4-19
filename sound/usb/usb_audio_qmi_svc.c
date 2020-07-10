@@ -18,6 +18,7 @@
 #include <linux/soc/qcom/qmi.h>
 #include <linux/iommu.h>
 #include <linux/dma-mapping.h>
+#include <linux/dma-noncoherent.h>
 #include <linux/platform_device.h>
 #include <linux/usb/audio-v3.h>
 #include <linux/ipc_logging.h>
@@ -277,8 +278,8 @@ done:
 	return va;
 }
 
-static unsigned long uaudio_iommu_map(enum mem_type mtype, phys_addr_t pa,
-		size_t size, struct sg_table *sgt)
+static unsigned long uaudio_iommu_map(enum mem_type mtype, bool dma_coherent,
+		phys_addr_t pa, size_t size, struct sg_table *sgt)
 {
 	unsigned long va_sg, va = 0;
 	bool map = true;
@@ -286,6 +287,10 @@ static unsigned long uaudio_iommu_map(enum mem_type mtype, phys_addr_t pa,
 	size_t sg_len, total_len = 0;
 	struct scatterlist *sg;
 	phys_addr_t pa_sg;
+	int prot = IOMMU_READ | IOMMU_WRITE;
+
+	if (dma_coherent)
+		prot |= IOMMU_CACHE;
 
 	switch (mtype) {
 	case MEM_EVENT_RING:
@@ -324,7 +329,7 @@ static unsigned long uaudio_iommu_map(enum mem_type mtype, phys_addr_t pa,
 		sg_len = PAGE_ALIGN(sg->offset + sg->length);
 		pa_sg = page_to_phys(sg_page(sg));
 		ret = iommu_map(uaudio_qdev->domain, va_sg, pa_sg, sg_len,
-			IOMMU_READ | IOMMU_WRITE | IOMMU_MMIO);
+												prot);
 		if (ret) {
 			uaudio_err("mapping failed ret%d\n", ret);
 			uaudio_err("memtype:%d, pa:%pa iova:%lu sg_len:%zu\n",
@@ -351,8 +356,7 @@ skip_sgt_map:
 	uaudio_dbg("memtype:%d map pa:%pa to iova %lu size:%zu\n", mtype, &pa,
 			va, size);
 
-	ret = iommu_map(uaudio_qdev->domain, va, pa, size,
-		IOMMU_READ | IOMMU_WRITE | IOMMU_MMIO);
+	ret = iommu_map(uaudio_qdev->domain, va, pa, size, prot);
 	if (ret)
 		uaudio_err("failed to map pa:%pa iova:%lu memtype:%d ret:%d\n",
 				&pa, va, mtype, ret);
@@ -479,6 +483,7 @@ static int prepare_qmi_response(struct snd_usb_substream *subs,
 	phys_addr_t xhci_pa, xfer_buf_pa, tr_data_pa = 0, tr_sync_pa = 0;
 	dma_addr_t dma;
 	struct sg_table sgt;
+	bool dma_coherent;
 
 	iface = usb_ifnum_to_if(subs->dev, subs->interface);
 	if (!iface) {
@@ -645,7 +650,8 @@ skip_sync_ep:
 	resp->controller_num =  ret;
 	resp->controller_num_valid = 1;
 
-	/*  map xhci data structures PA memory to iova */
+	/* map xhci data structures PA memory to iova */
+	dma_coherent = dev_is_dma_coherent(subs->dev->bus->sysdev);
 
 	/* event ring */
 	ret = usb_sec_event_ring_setup(subs->dev, resp->interrupter_num);
@@ -662,7 +668,8 @@ skip_sync_ep:
 		goto err;
 	}
 
-	va = uaudio_iommu_map(MEM_EVENT_RING, xhci_pa, PAGE_SIZE, NULL);
+	va = uaudio_iommu_map(MEM_EVENT_RING, dma_coherent, xhci_pa, PAGE_SIZE,
+			NULL);
 	if (!va) {
 		ret = -ENOMEM;
 		goto err;
@@ -685,7 +692,7 @@ skip_sync_ep:
 	}
 
 	if (!uadev[card_num].dcba_iova) { /* mappped per usb device */
-		va = uaudio_iommu_map(MEM_DCBA, xhci_pa, PAGE_SIZE, NULL);
+		va = uaudio_iommu_map(MEM_DCBA, dma_coherent, xhci_pa, PAGE_SIZE, NULL);
 		if (!va)
 			goto unmap_er;
 
@@ -700,7 +707,8 @@ skip_sync_ep:
 	resp->xhci_mem_info.dcba.size = PAGE_SIZE;
 
 	/* data transfer ring */
-	va = uaudio_iommu_map(MEM_XFER_RING, tr_data_pa, PAGE_SIZE, NULL);
+	va = uaudio_iommu_map(MEM_XFER_RING, dma_coherent, tr_data_pa,
+			PAGE_SIZE, NULL);
 	if (!va) {
 		ret = -ENOMEM;
 		goto unmap_dcba;
@@ -716,7 +724,8 @@ skip_sync_ep:
 		goto skip_sync;
 
 	xhci_pa = resp->xhci_mem_info.tr_sync.pa;
-	va = uaudio_iommu_map(MEM_XFER_RING, tr_sync_pa, PAGE_SIZE, NULL);
+	va = uaudio_iommu_map(MEM_XFER_RING, dma_coherent, tr_sync_pa,
+			PAGE_SIZE, NULL);
 	if (!va) {
 		ret = -ENOMEM;
 		goto unmap_data;
@@ -751,7 +760,8 @@ skip_sync:
 
 	dma_get_sgtable(subs->dev->bus->sysdev, &sgt, xfer_buf, xfer_buf_pa,
 			len);
-	va = uaudio_iommu_map(MEM_XFER_BUF, xfer_buf_pa, len, &sgt);
+	va = uaudio_iommu_map(MEM_XFER_BUF, dma_coherent, xfer_buf_pa, len,
+			&sgt);
 	if (!va) {
 		ret = -ENOMEM;
 		goto unmap_sync;
