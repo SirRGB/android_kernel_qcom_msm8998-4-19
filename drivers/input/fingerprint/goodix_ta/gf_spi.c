@@ -255,8 +255,7 @@ static void gf_event_worker(struct work_struct *work)
 		if (gf_dev->display_on)
 			break;
 
-		wake_lock_timeout(&gf_dev->fp_wakelock,
-				msecs_to_jiffies(FINGERPRINT_PROCESSING_MS));
+		__pm_wakeup_event(gf_dev->fp_wakelock, FINGERPRINT_PROCESSING_MS);
 		break;
 	}
 
@@ -373,18 +372,27 @@ static int gf_probe(struct platform_device *pdev)
 		goto error_input_register;
 	}
 
+	gf_dev->fp_wakelock = wakeup_source_register(NULL, "fp_wakelock");
+	if (!gf_dev->fp_wakelock) {
+		pr_err("%s: failed to register wakeup source\n", __func__);
+		rc = -ENOMEM;
+		goto error_wakeup_source;
+	}
+
 	gf_dev->notifier = gf_fb_notifier;
 	fb_register_client(&gf_dev->notifier);
 	gf_dev->event_workqueue = alloc_workqueue("gf-event-wq",
 			WQ_MEM_RECLAIM | WQ_HIGHPRI, 0);
 	INIT_WORK(&gf_dev->event_work, gf_event_worker);
 
-	wake_lock_init(&gf_dev->fp_wakelock, WAKE_LOCK_SUSPEND, "fp_wakelock");
-
 	netlink_init();
 
 	return 0;
 
+error_wakeup_source:
+	input_unregister_device(gf_dev->input);
+	gf_dev->input = NULL;
+	goto error_input_alloc;
 error_input_register:
 	input_free_device(gf_dev->input);
 error_input_alloc:
@@ -404,7 +412,10 @@ static int gf_remove(struct platform_device *pdev)
 
 	netlink_exit();
 
-	wake_lock_destroy(&gf_dev->fp_wakelock);
+	if (gf_dev->fp_wakelock) {
+		wakeup_source_unregister(gf_dev->fp_wakelock);
+		gf_dev->fp_wakelock = NULL;
+	}
 
 	destroy_workqueue(gf_dev->event_workqueue);
 
