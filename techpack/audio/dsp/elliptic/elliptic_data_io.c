@@ -47,7 +47,7 @@
 #include "elliptic_data_io.h"
 #include "elliptic_device.h"
 
-#include <sound/apr_elliptic.h>
+#include <dsp/apr_elliptic.h>
 #define IO_PING_PONG_BUFFER_SIZE 512
 
 struct elliptic_msm_io_device {
@@ -89,5 +89,4 @@ int32_t elliptic_data_io_transact(uint32_t message_id, const char *data,
 	pr_err("%s : unimplemented\n", __func__);
 	return -EINVAL;
 }
-
 

@@ -8,19 +8,14 @@
 #include <sound/asound.h>
 #include <sound/soc.h>
 #include <sound/control.h>
-#include "msm-pcm-routing-v2.h"
-#include <sound/q6audio-v2.h>
-#include <sound/apr_audio-v2.h>
-#include <sound/apr_elliptic.h>
-#include "msm-elliptic.h"
+#include <dsp/q6audio-v2.h>
+#include <dsp/apr_audio-v2.h>
+#include <dsp/apr_elliptic.h>
+#include <dsp/q6afe-v2.h>
 
 #include <elliptic_data_io.h>
 #include <elliptic_mixer_controls.h>
 
-
-#ifndef min
-#define min(a, b) (((a) < (b)) ? (a) : (b))
-#endif
 
 int afe_ultrasound_set_calib_data(int port,
 		int param_id,

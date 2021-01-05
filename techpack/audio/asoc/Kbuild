@@ -229,7 +229,11 @@ ifdef CONFIG_SND_SOC_QDSP6V2
 endif
 ifdef CONFIG_MACH_XIAOMI_MSM8998
 	PLATFORM_OBJS += msm-elliptic.o
-	EXTRA_CFLAGS += -I$(AUDIO_ROOT)/include
+	ifeq ($(KERNEL_BUILD), 1)
+		EXTRA_CFLAGS += -I$(srctree)/techpack/audio/include/elliptic
+	else
+		EXTRA_CFLAGS += -I$(AUDIO_ROOT)/include/elliptic
+	endif
 endif
 ifdef CONFIG_WCD9XXX_CODEC_CORE
 	PLATFORM_OBJS += msm-dai-slim.o

@@ -150,7 +150,11 @@ ifdef CONFIG_MACH_XIAOMI_MSM8998
 	ELLIPTIC_OBJS += elliptic/elliptic.o
 	ELLIPTIC_OBJS += elliptic/elliptic_sysfs.o
 	ELLIPTIC_OBJS += elliptic/elliptic_data_io.o
-	EXTRA_CFLAGS += -I$(AUDIO_ROOT)/include/drivers/elliptic
+	ifeq ($(KERNEL_BUILD), 1)
+		EXTRA_CFLAGS += -I$(srctree)/techpack/audio/include/elliptic
+	else
+		EXTRA_CFLAGS += -I$(AUDIO_ROOT)/include/elliptic
+	endif
 endif
 
 ifdef CONFIG_SND_SOC_MSM_QDSP6V2_VM

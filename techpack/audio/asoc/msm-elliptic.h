@@ -5,8 +5,10 @@
 #ifndef _MSM_PCM_ELUS
 #define _MSM_PCM_ELUS
 
-#include <sound/apr_elliptic.h>
+#include <dsp/apr_elliptic.h>
 
-unsigned int elliptic_add_platform_controls(void *platform);
+struct snd_soc_component;
+
+unsigned int elliptic_add_platform_controls(struct snd_soc_component *component);
 
 #endif

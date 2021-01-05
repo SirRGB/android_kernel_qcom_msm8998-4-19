@@ -9,7 +9,7 @@
 /*  includes the file structure, that is, file open read close */
 #include <linux/fs.h>
 
-#include <sound/apr_elliptic.h>
+#include <dsp/apr_elliptic.h>
 
 /* include the character device, makes cdev avilable */
 #include <linux/cdev.h>

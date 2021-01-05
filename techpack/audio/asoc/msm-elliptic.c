@@ -9,8 +9,9 @@
 #include <sound/soc.h>
 #include <sound/control.h>
 #include "msm-pcm-routing-v2.h"
-#include <sound/q6audio-v2.h>
-#include <sound/apr_audio-v2.h>
+#include <dsp/q6audio-v2.h>
+#include <dsp/apr_audio-v2.h>
+#include <dsp/apr_elliptic.h>
 #include "msm-elliptic.h"
 
 #include <elliptic_data_io.h>
@@ -595,16 +596,14 @@ static const struct snd_kcontrol_new ultrasound_filter_mixer_controls[] = {
 
 
 
-unsigned int elliptic_add_platform_controls(void *platform)
+unsigned int elliptic_add_platform_controls(struct snd_soc_component *component)
 {
 	const unsigned int num_controls =
 		ARRAY_SIZE(ultrasound_filter_mixer_controls);
 
-	if (platform != NULL) {
-		snd_soc_add_platform_controls(
-			(struct snd_soc_platform *)platform,
-			ultrasound_filter_mixer_controls,
-			num_controls);
+	if (component) {
+		snd_soc_add_component_controls(component,
+			ultrasound_filter_mixer_controls, num_controls);
 	} else {
 		pr_debug("[ELUS]: pointer is NULL %s\n", __func__);
 	}

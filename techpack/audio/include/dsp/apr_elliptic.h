@@ -1,7 +1,7 @@
 #pragma once
 
 #include <linux/types.h>
-#include <sound/apr_audio-v2.h>
+#include <dsp/apr_audio-v2.h>
 #include <linux/delay.h>
 
 /* Elliptic Labs UltraSound Module */
