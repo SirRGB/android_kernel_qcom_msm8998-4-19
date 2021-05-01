@@ -661,7 +661,6 @@
 		interrupt-controller;
 		#interrupt-cells = <4>;
 		cell-index = <0>;
-		qcom,enable-ahb-bus-workaround;
 	};
 
 	qcom,sps {
