@@ -654,12 +654,12 @@
 		interrupt-names = "core_irq", "bam_irq", "wakeup_irq";
 		#address-cells = <0>;
 		interrupt-parent = <&blsp1_uart1_hs>;
-		interrupts = <0 1 2>;
+		interrupts = <GIC_SPI 1 IRQ_TYPE_EDGE_FALLING>;
 		#interrupt-cells = <1>;
 		interrupt-map-mask = <0xffffffff>;
-		interrupt-map = <0 &intc 0 0 107 0
-			    1 &intc 0 0 238 0
-			    2 &tlmm 1 0>;
+		interrupt-map = <0 &intc 0 0 107 IRQ_TYPE_LEVEL_HIGH
+			    1 &intc 0 0 238 IRQ_TYPE_LEVEL_HIGH
+			    2 &tlmm 1 IRQ_TYPE_LEVEL_HIGH>;
 
 		qcom,inject-rx-on-wakeup;
 		qcom,rx-char-to-inject = <0xFD>;
@@ -691,12 +691,12 @@
 		interrupt-names = "core_irq", "bam_irq", "wakeup_irq";
 		#address-cells = <0>;
 		interrupt-parent = <&blsp1_uart2_hs>;
-		interrupts = <0 1 2>;
+		interrupts = <GIC_SPI 1 IRQ_TYPE_EDGE_FALLING>;
 		#interrupt-cells = <1>;
 		interrupt-map-mask = <0xffffffff>;
-		interrupt-map = <0 &intc 0 0 108 0
-			    1 &intc 0 0 238 0
-			    2 &tlmm 34 0>;
+		interrupt-map = <0 &intc 0 0 108 IRQ_TYPE_LEVEL_HIGH
+			    1 &intc 0 0 238 IRQ_TYPE_LEVEL_HIGH
+			    2 &tlmm 34 IRQ_TYPE_LEVEL_HIGH>;
 
 		qcom,inject-rx-on-wakeup;
 		qcom,rx-char-to-inject = <0xFD>;
@@ -728,12 +728,12 @@
 		interrupt-names = "core_irq", "bam_irq", "wakeup_irq";
 		#address-cells = <0>;
 		interrupt-parent = <&blsp1_uart3_hs>;
-		interrupts = <0 1 2>;
+		interrupts = <GIC_SPI 1 IRQ_TYPE_EDGE_FALLING>;
 		#interrupt-cells = <1>;
 		interrupt-map-mask = <0xffffffff>;
-		interrupt-map = <0 &intc 0 0 109 0
-			    1 &intc 0 0 238 0
-			    2 &tlmm 46 0>;
+		interrupt-map = <0 &intc 0 0 109 IRQ_TYPE_LEVEL_HIGH
+			    1 &intc 0 0 238 IRQ_TYPE_LEVEL_HIGH
+			    2 &tlmm 46 IRQ_TYPE_LEVEL_HIGH>;
 
 		qcom,inject-rx-on-wakeup;
 		qcom,rx-char-to-inject = <0xFD>;
@@ -767,12 +767,12 @@
 		interrupt-names = "core_irq", "bam_irq", "wakeup_irq";
 		#address-cells = <0>;
 		interrupt-parent = <&blsp2_uart1_hs>;
-		interrupts = <0 1 2>;
+		interrupts = <GIC_SPI 1 IRQ_TYPE_EDGE_FALLING>;
 		#interrupt-cells = <1>;
 		interrupt-map-mask = <0xffffffff>;
-		interrupt-map = <0 &intc 0 0 113 0
-			    1 &intc 0 0 239 0
-			    2 &tlmm 54 0>;
+		interrupt-map = <0 &intc 0 0 113 IRQ_TYPE_LEVEL_HIGH
+			    1 &intc 0 0 239 IRQ_TYPE_LEVEL_HIGH
+			    2 &tlmm 54 IRQ_TYPE_LEVEL_HIGH>;
 
 		qcom,inject-rx-on-wakeup;
 		qcom,rx-char-to-inject = <0xFD>;
@@ -804,12 +804,12 @@
 		interrupt-names = "core_irq", "bam_irq", "wakeup_irq";
 		#address-cells = <0>;
 		interrupt-parent = <&blsp2_uart2_hs>;
-		interrupts = <0 1 2>;
+		interrupts = <GIC_SPI 1 IRQ_TYPE_EDGE_FALLING>;
 		#interrupt-cells = <1>;
 		interrupt-map-mask = <0xffffffff>;
-		interrupt-map = <0 &intc 0 0 114 0
-			    1 &intc 0 0 239 0
-			    2 &tlmm 5 0>;
+		interrupt-map = <0 &intc 0 0 114 IRQ_TYPE_LEVEL_HIGH
+			    1 &intc 0 0 239 IRQ_TYPE_LEVEL_HIGH
+			    2 &tlmm 5 IRQ_TYPE_LEVEL_HIGH>;
 
 		qcom,inject-rx-on-wakeup;
 		qcom,rx-char-to-inject = <0xFD>;
@@ -841,12 +841,12 @@
 		interrupt-names = "core_irq", "bam_irq", "wakeup_irq";
 		#address-cells = <0>;
 		interrupt-parent = <&blsp2_uart3_hs>;
-		interrupts = <0 1 2>;
+		interrupts = <GIC_SPI 1 IRQ_TYPE_EDGE_FALLING>;
 		#interrupt-cells = <1>;
 		interrupt-map-mask = <0xffffffff>;
-		interrupt-map = <0 &intc 0 0 115 0
-			    1 &intc 0 0 239 0
-			    2 &tlmm 50 0>;
+		interrupt-map = <0 &intc 0 0 115 IRQ_TYPE_LEVEL_HIGH
+			    1 &intc 0 0 239 IRQ_TYPE_LEVEL_HIGH
+			    2 &tlmm 50 IRQ_TYPE_LEVEL_HIGH>;
 
 		qcom,inject-rx-on-wakeup;
 		qcom,rx-char-to-inject = <0xFD>;
