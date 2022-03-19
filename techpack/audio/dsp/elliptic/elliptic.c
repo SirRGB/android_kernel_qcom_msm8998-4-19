@@ -680,14 +680,12 @@ static int __init elliptic_driver_init(void)
 		}
 	}
 
-	wake_source = kmalloc(sizeof(struct wakeup_source), GFP_KERNEL);
-
+	wake_source = wakeup_source_register(NULL, "elliptic_wake_source");
 	if (!wake_source) {
 		EL_PRINT_E("failed to allocate wake source");
-		return -ENOMEM;
+		err = -ENOMEM;
+		goto fail;
 	}
-
-	wakeup_source_init(wake_source, "elliptic_wake_source");
 
 	return 0;
 
@@ -699,8 +697,8 @@ fail:
 static void elliptic_driver_exit(void)
 {
 	if (wake_source) {
-		wakeup_source_trash(wake_source);
-		kfree(wake_source);
+		wakeup_source_unregister(wake_source);
+		wake_source = NULL;
 	}
 
 	elliptic_cleanup_sysfs();
