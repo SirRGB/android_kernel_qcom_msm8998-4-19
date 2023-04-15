@@ -85,7 +85,7 @@
 			"core_clk", "iface_clk", "bus_clk",
 			"maxi_clk", "core0_clk", "core1_clk";
 		clocks = <&clock_gcc GCC_MMSS_SYS_NOC_AXI_CLK>,
-			<&clock_rpmcc MMSSNOC_AXI_CLK>,
+			<&clock_rpmcc RPM_SMD_MMSSNOC_AXI_CLK>,
 			<&clock_mmss MMSS_MNOC_AHB_CLK>,
 			<&clock_mmss MMSS_BIMC_SMMU_AHB_CLK>,
 			<&clock_mmss MMSS_BIMC_SMMU_AXI_CLK>,
