@@ -25,7 +25,7 @@
 			 <&clock_mmss MMSS_MDSS_AXI_CLK>,
 			 <&clock_mmss MDP_CLK_SRC>,
 			 <&clock_mmss MMSS_MDSS_MDP_CLK>,
-			 <&clock_rpmcc MMSSNOC_AXI_CLK>,
+			 <&clock_rpmcc RPM_SMD_MMSSNOC_AXI_CLK>,
 			 <&clock_mmss MMSS_MNOC_AHB_CLK>,
 			 <&clock_mmss MMSS_BIMC_SMMU_AHB_CLK>,
 			 <&clock_mmss MMSS_BIMC_SMMU_AXI_CLK>,
@@ -281,7 +281,7 @@
 			compatible = "qcom,smmu_sde_unsec_legacy";
 			iommus = <&mmss_smmu 0>;
 			gdsc-mdss-supply = <&gdsc_bimc_smmu>;
-			clocks = <&clock_rpmcc MMSSNOC_AXI_CLK>,
+			clocks = <&clock_rpmcc RPM_SMD_MMSSNOC_AXI_CLK>,
 				<&clock_mmss MMSS_MNOC_AHB_CLK>,
 				<&clock_mmss MMSS_BIMC_SMMU_AHB_CLK>,
 				<&clock_mmss MMSS_BIMC_SMMU_AXI_CLK>;
@@ -295,7 +295,7 @@
 			compatible = "qcom,smmu_sde_sec_legacy";
 			iommus = <&mmss_smmu 1>;
 			gdsc-mdss-supply = <&gdsc_bimc_smmu>;
-			clocks = <&clock_rpmcc MMSSNOC_AXI_CLK>,
+			clocks = <&clock_rpmcc RPM_SMD_MMSSNOC_AXI_CLK>,
 				<&clock_mmss MMSS_MNOC_AHB_CLK>,
 				<&clock_mmss MMSS_BIMC_SMMU_AHB_CLK>,
 				<&clock_mmss MMSS_BIMC_SMMU_AXI_CLK>;
@@ -688,7 +688,7 @@
 			compatible = "qcom,smmu_sde_rot_unsec_legacy";
 			iommus = <&mmss_smmu 0xe00>;
 			gdsc-mdss-supply = <&gdsc_bimc_smmu>;
-			clocks = <&clock_rpmcc MMSSNOC_AXI_CLK>,
+			clocks = <&clock_rpmcc RPM_SMD_MMSSNOC_AXI_CLK>,
 				<&clock_mmss MMSS_MNOC_AHB_CLK>,
 				<&clock_mmss MMSS_BIMC_SMMU_AHB_CLK>,
 				<&clock_mmss MMSS_BIMC_SMMU_AXI_CLK>;
@@ -702,7 +702,7 @@
 			compatible = "qcom,smmu_sde_rot_sec_legacy";
 			iommus = <&mmss_smmu 0xe01>;
 			gdsc-mdss-supply = <&gdsc_bimc_smmu>;
-			clocks = <&clock_rpmcc MMSSNOC_AXI_CLK>,
+			clocks = <&clock_rpmcc RPM_SMD_MMSSNOC_AXI_CLK>,
 				<&clock_mmss MMSS_MNOC_AHB_CLK>,
 				<&clock_mmss MMSS_BIMC_SMMU_AHB_CLK>,
 				<&clock_mmss MMSS_BIMC_SMMU_AXI_CLK>;

@@ -129,8 +129,8 @@
 			qcom,base-offset = <16384>;
 			qcom,util-fact = <153>;
 			clock-names = "bus_clk", "bus_a_clk";
-			clocks = <&clock_rpmcc MMSSNOC_AXI_CLK>,
-				<&clock_rpmcc MMSSNOC_AXI_A_CLK>;
+			clocks = <&clock_rpmcc RPM_SMD_MMSSNOC_AXI_CLK>,
+				<&clock_rpmcc RPM_SMD_MMSSNOC_AXI_A_CLK>;
 			clk-camss-ahb-no-rate-supply =
 					<&gdsc_camss_top>;
 			clk-video-ahb-no-rate-supply =
@@ -146,7 +146,7 @@
 				"clk-video-ahb-no-rate",
 				"clk-video-axi-no-rate";
 				clocks =
-				<&clock_rpmcc MMSSNOC_AXI_CLK>,
+				<&clock_rpmcc RPM_SMD_MMSSNOC_AXI_CLK>,
 				<&clock_gcc GCC_MMSS_NOC_CFG_AHB_CLK>,
 				<&clock_mmss MMSS_MNOC_AHB_CLK>,
 				<&clock_mmss MMSS_CAMSS_AHB_CLK>,
@@ -1304,7 +1304,7 @@
 			qcom,slv-rpm-id = <ICBID_SLAVE_MNOC_BIMC>;
 			qcom,enable-only-clk;
 			clock-names = "node_clk";
-			clocks = <&clock_rpmcc MMSSNOC_AXI_CLK>;
+			clocks = <&clock_rpmcc RPM_SMD_MMSSNOC_AXI_CLK>;
 		};
 
 		slv_vmem: slv-vmem {
