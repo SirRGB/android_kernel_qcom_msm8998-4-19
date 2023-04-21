@@ -323,6 +323,13 @@ config BACKLIGHT_QCOM_SPMI_WLED
 	  of the display backlight. This supports PMI8998, PM8150L, PM6150L
 	  currently.
 
+config BACKLIGHT_QCOM_WLED
+	tristate "Qualcomm PMIC WLED Driver"
+	select REGMAP
+	help
+	  Say Y to enable the backlight driver for the WLED block found on
+	  Qualcomm PMICs such as PMI8998 and PM660L.
+
 config BACKLIGHT_SAHARA
 	tristate "Tabletkiosk Sahara Touch-iT Backlight Driver"
 	depends on X86
