@@ -2763,11 +2763,11 @@ static struct clk_branch gcc_qspi_ref_clk = {
 	},
 };
 
-static struct measure_clk_data debug_mux_priv = {
+/*static struct measure_clk_data debug_mux_priv = {
 	.xo_div4_cbcr = 0x43008,
 	.ctl_reg = 0x62004,
 	.status_reg = 0x62008,
-};
+};*/
 /*
 	MUX_REC_SRC_LIST(
 		&gpu_gcc_debug_clk.c,
@@ -2867,7 +2867,7 @@ static const char *const debug_mux_parent_names[] = {
 	"gcc_qspi_ref_clk",
 };
 
-static struct clk_debug_mux gcc_debug_mux = {
+/*static struct clk_debug_mux gcc_debug_mux = {
 	.priv = &debug_mux_priv,
 	.debug_offset = 0x62008,
 	.post_div_offset = 0x62000,
@@ -2972,7 +2972,7 @@ static struct clk_debug_mux gcc_debug_mux = {
 		.num_parents = ARRAY_SIZE(debug_mux_parent_names),
 		.flags = CLK_IS_MEASURE,
 	},
-};
+};*/
 
 static struct clk_hw *gcc_msm8998_hws[] = {
 	[GCC_CE1_AHB_M_CLK] = &gcc_ce1_ahb_m_clk.hw,
@@ -3198,7 +3198,7 @@ static void gcc_msm8998_clocks_fixup(int socrev)
 	if (socrev >= 1) {
 		gcc_msm8998_clocks[QSPI_REF_CLK_SRC] = NULL;
 		gcc_msm8998_clocks[GCC_QSPI_REF_CLK] = NULL;
-		gcc_msm8998_clocks[GCC_QSPI_AHB_CLK] = NULL;	
+		gcc_msm8998_clocks[GCC_QSPI_AHB_CLK] = NULL;
 	}
 }
 
@@ -3318,12 +3318,12 @@ static struct clk_lookup msm_clocks_measure_8998[] = {
 	CLK_LOOKUP_OF("measure", gcc_debug_mux, "debug"),
 };
 */
-static struct of_device_id clk_debug_match_table[] = {
+/*static struct of_device_id clk_debug_match_table[] = {
 	{ .compatible = "qcom,debugcc-msm8998" },
 	{}
-};
+};*/
 
-static int msm_clock_debug_8998_probe(struct platform_device *pdev)
+/*static int msm_clock_debug_8998_probe(struct platform_device *pdev)
 {
 	struct clk *clk;
 	int ret = 0, count;
@@ -3423,5 +3423,4 @@ static struct platform_driver clk_debug_msm8998_driver = {
 int __init clk_debug_msm8998_init(void)
 {
 	return platform_driver_register(&clk_debug_msm8998_driver);
-}
-late_initcall(clk_debug_msm8998_init);
+}*/
