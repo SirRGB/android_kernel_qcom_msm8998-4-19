@@ -235,5 +235,8 @@
 #define AGGR2_NOC_USB_CLK			183
 #define SYSMMNOC_MSMBUS_CLK			184
 #define SYSMMNOC_MSMBUS_A_CLK			185
+#define CXO_SMD_DWC3_CLK			186
+#define CXO_SMD_PIL_SSC_CLK			187
+#define CXO_SMD_PIL_SPSS_CLK			188
 
 #endif
