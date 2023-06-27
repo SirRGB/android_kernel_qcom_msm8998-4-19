@@ -68,6 +68,7 @@ obj-$(CONFIG_SDM_GCC_LAGOON) += gcc-lagoon.o
 obj-$(CONFIG_SDM_GPUCC_660) += gpucc-sdm660.o
 obj-$(CONFIG_SDM_GPUCC_LAGOON) += gpucc-lagoon.o
 obj-$(CONFIG_SDM_MMCC_660) += mmcc-sdm660.o
+obj-$(CONFIG_MSM_MMCC_8998) += mmcc-msm8998.o
 obj-$(CONFIG_SDM_NPUCC_LAGOON) += npucc-lagoon.o
 obj-$(CONFIG_SDM_VIDEOCC_845) += videocc-sdm845.o
 obj-$(CONFIG_SDM_VIDEOCC_LAGOON) += videocc-lagoon.o

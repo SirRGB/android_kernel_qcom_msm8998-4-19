@@ -10,6 +10,7 @@ Required properties :
 			"qcom,mmcc-msm8960"
 			"qcom,mmcc-msm8974"
 			"qcom,mmcc-msm8996"
+			"qcom,mmcc-msm8998"
 			"qcom,mmcc-sdm660"
 			"qcom,mmcc-sdm630"
 
