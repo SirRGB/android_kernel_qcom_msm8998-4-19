@@ -10,6 +10,7 @@ Required properties :
 		"qcom,gpu-sdm660",
 		"qcom,gpucc-sdm660",
 		"qcom,gpucc-sdm630",
+		"qcom,msm8998-gpucc",
 		"qcom,khaje-gpucc".
 
 - reg: shall contain base register offset and size.
