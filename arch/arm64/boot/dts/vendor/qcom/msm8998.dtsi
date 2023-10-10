@@ -1858,7 +1858,7 @@
 			compatible = "snps,dwc3";
 			reg = <0x0a800000 0xcd00>;
 			interrupt-parent = <&intc>;
-			interrupts = <0 131 0>;
+			interrupts = <GIC_SPI 131 IRQ_TYPE_LEVEL_HIGH>;
 			usb-phy = <&qusb_phy0>, <&ssphy>;
 			tx-fifo-resize;
 			linux,sysdev_is_parent;
@@ -1876,7 +1876,7 @@
 			compatible = "qcom,usb-bam-msm";
 			reg = <0xa904000 0x17000>;
 			interrupt-parent = <&intc>;
-			interrupts = <0 132 0>;
+			interrupts = <GIC_SPI 132 IRQ_TYPE_LEVEL_HIGH>;
 
 			qcom,bam-type = <0>;
 			qcom,usb-bam-fifo-baseaddr = <0x146bb000>;
