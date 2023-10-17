@@ -674,12 +674,39 @@ mpm_map_err:
 
 IRQCHIP_DECLARE(mpm_gic_chip, "qcom,mpm-gic", mpm_gic_chip_init);
 
+static const struct of_device_id mpm_gpio_chip_data_table[] = {
+	{
+		.compatible = "qcom,mpm-gpio-msm8998",
+		.data = mpm_msm8998_gpio_chip_data,
+	},
+	{}
+};
+
 static int __init mpm_gpio_chip_init(struct device_node *node,
 					struct device_node *parent)
 {
+	const struct of_device_id *id;
+
+	id = of_match_node(mpm_gpio_chip_data_table, node);
+
+	if (!id) {
+		pr_err("match_table not found for mpm-gpio\n");
+		return -ENODEV;
+	}
+
+	if (of_property_read_bool(node, "qcom,mpm-gpio-skip-set-wake"))
+		msm_mpm_gpio_chip.flags |= IRQCHIP_SKIP_SET_WAKE;
+
+	if (of_property_read_bool(node, "qcom,mpm-gpio-mask-on-suspend"))
+		msm_mpm_gpio_chip.flags |= IRQCHIP_MASK_ON_SUSPEND;
+
+	if (of_property_read_bool(node,
+				  "qcom,mpm-gpio-irq-enabled-by-firmware"))
+		msm_mpm_gpio_chip.irq_enable = NULL;
+
 	msm_mpm_dev_data.gpio_chip_domain = irq_domain_create_linear(
 			of_node_to_fwnode(node), num_mpm_irqs,
-			&msm_mpm_gpio_chip_domain_ops, NULL);
+			&msm_mpm_gpio_chip_domain_ops, (void *)id->data);
 
 	if (!msm_mpm_dev_data.gpio_chip_domain)
 		return -ENOMEM;
