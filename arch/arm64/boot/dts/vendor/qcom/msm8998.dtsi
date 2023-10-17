@@ -1477,7 +1477,7 @@
 		qcom,pas-id = <0xF>;
 		qcom,mas-crypto = <&mas_crypto_c0>;
 		qcom,pil-force-shutdown;
-		qcom,serial-loading;
+		qcom,sequential-fw-load;
 		qcom,firmware-name = "ipa_fws";
 	};
 
@@ -2258,7 +2258,7 @@
 		memory-region = <&modem_mem>;
 		qcom,mem-protect-id = <0xF>;
 		qcom,mas-crypto = <&mas_crypto_c0>;
-		qcom,serial-loading;
+		qcom,sequential-fw-load;
 
 		/* GPIO inputs from mss */
 		interrupts-extended =
