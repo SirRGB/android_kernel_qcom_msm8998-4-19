@@ -1384,6 +1384,7 @@
 		status = "ok";
 		qcom,ipa-hw-ver = <11>; /* IPA core version = IPAv3.1 */
 		qcom,ipa-hw-mode = <0>; /* IPA hw type = Normal */
+		qcom,platform-type = <1>; /* MSM platform */
 		qcom,ee = <0>;
 		qcom,use-gsi;
 		qcom,use-ipa-tethering-bridge;
