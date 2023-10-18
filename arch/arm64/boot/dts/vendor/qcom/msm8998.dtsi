@@ -1395,7 +1395,7 @@
 		clocks = <&clock_rpmcc RPM_SMD_IPA_CLK>;
 		clock-names = "core_clk";
 		qcom,arm-smmu;
-		qcom,smmu-fast-map;
+		qcom,iommu-dma = "fastmap";
 		qcom,smmu-disable-htw;
 		qcom,msm-bus,name = "ipa";
 		qcom,msm-bus,num-cases = <5>;
@@ -1449,7 +1449,7 @@
 		ipa_smmu_ap: ipa_smmu_ap {
 			compatible = "qcom,ipa-smmu-ap-cb";
 			iommus = <&anoc2_smmu 0x18e0>;
-			qcom,iova-mapping = <0x20000000 0x40000000>;
+			qcom,iommu-dma-addr-pool = <0x20000000 0x40000000>;
 			qcom,additional-mapping =
 				<0x146BD000 0x146BD000 0x2000>;
 		};
@@ -1464,7 +1464,7 @@
 		ipa_smmu_uc: ipa_smmu_uc {
 			compatible = "qcom,ipa-smmu-uc-cb";
 			iommus = <&anoc2_smmu 0x18e2>;
-			qcom,iova-mapping = <0x40000000 0x20000000>;
+			qcom,iommu-dma-addr-pool = <0x40000000 0x20000000>;
 		};
 	};
 
