@@ -22,6 +22,7 @@
 		interrupts = <0 83 0>;
 		interrupt-controller;
 		#interrupt-cells = <1>;
+		#list-cells = <1>;
 		vdd-supply = <&gdsc_mdss>;
 		gdsc-core-supply = <&gdsc_bimc_smmu>;
 
