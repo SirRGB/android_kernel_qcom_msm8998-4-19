@@ -99,6 +99,7 @@ struct limits_dcvs_hw {
 	struct device_attribute lmh_freq_attr;
 	struct list_head list;
 	bool is_irq_enabled;
+	bool is_legacy;
 	struct mutex access_lock;
 	struct __limits_cdev_data *cdev_data;
 	uint32_t cdev_registered;
@@ -438,11 +439,27 @@ static void register_cooling_device(struct work_struct *work)
 
 	mutex_lock(&lmh_dcvs_list_access);
 	list_for_each_entry(hw, &lmh_dcvs_hw_list, list) {
+		struct thermal_cooling_device *cluster_cdev = NULL;
+
 		if (hw->max_freq[0] == U32_MAX)
 			limits_dcvs_get_freq_limits(hw);
 
 		idx = 0;
+		/* Legacy devices register per-cluster, not per-CPU */
+		if (hw->is_legacy) {
+			for_each_cpu(cpu, &hw->core_map) {
+				if (hw->cdev_data[idx].cdev) {
+					cluster_cdev = hw->cdev_data[idx].cdev;
+					break;
+				}
+				idx++;
+			}
+		}
+
+		idx = 0;
 		for_each_cpu(cpu, &hw->core_map) {
+			if (cluster_cdev)
+				break;
 			if (hw->cdev_data[idx].cdev ||
 				!cpumask_test_cpu(cpu, &hw->online_mask)) {
 				idx++;
@@ -451,18 +468,22 @@ static void register_cooling_device(struct work_struct *work)
 			policy = cpufreq_cpu_get(cpu);
 			if (!policy) {
 				pr_err("no policy for cpu%d\n", cpu);
+				idx++;
 				continue;
 			}
 			hw->cdev_data[idx].max_freq = U32_MAX;
 			hw->cdev_data[idx].min_freq = 0;
 			hw->cdev_data[idx].cdev =
-					cpufreq_platform_cooling_register(
-							policy, &cd_ops);
+				cpufreq_platform_cooling_register(policy,
+								  &cd_ops);
 			if (IS_ERR_OR_NULL(hw->cdev_data[idx].cdev)) {
 				pr_err("CPU:%u cdev register error:%ld\n",
 					cpu, PTR_ERR(hw->cdev_data[idx].cdev));
 				hw->cdev_data[idx].cdev = NULL;
+				cpufreq_cpu_put(policy);
 			} else {
+				if (hw->is_legacy)
+					cluster_cdev = hw->cdev_data[idx].cdev;
 				pr_debug("CPU:%u cdev registered\n", cpu);
 				hw->cdev_registered++;
 			}
@@ -479,7 +500,8 @@ static int limits_cpu_online(unsigned int online_cpu)
 	if (!hw)
 		return 0;
 	cpumask_set_cpu(online_cpu, &hw->online_mask);
-	if (hw->cdev_registered != cpumask_weight(&hw->core_map))
+	if (hw->cdev_registered !=
+		(hw->is_legacy ? 1 : cpumask_weight(&hw->core_map)))
 		queue_work(system_highpri_wq, &hw->cdev_register_work);
 
 	return 0;
@@ -624,7 +646,8 @@ static int limits_dcvs_probe(struct platform_device *pdev)
 	}
 
 	/* Check legcay LMH HW enablement is needed or not */
-	if (of_property_read_bool(dn, "qcom,legacy-lmh-enable")) {
+	hw->is_legacy = of_property_read_bool(dn, "qcom,legacy-lmh-enable");
+	if (hw->is_legacy) {
 		/* Enable the thermal algorithm early */
 		ret = limits_dcvs_write(hw->affinity, LIMITS_SUB_FN_THERMAL,
 			 LIMITS_ALGO_MODE_ENABLE, 1, 0, 0);
