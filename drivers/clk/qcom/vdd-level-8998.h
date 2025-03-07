@@ -79,6 +79,16 @@
 	},					\
 	.num_rate_max = VDD_DIG_NUM
 
+#define VDD_DIG_FMAX_MAP4_AO(l1, f1, l2, f2, l3, f3, l4, f4) \
+	.vdd_class = &vdd_dig_ao,			\
+	.rate_max = (unsigned long[VDD_DIG_NUM]) {	\
+		[VDD_DIG_##l1] = (f1),		\
+		[VDD_DIG_##l2] = (f2),		\
+		[VDD_DIG_##l3] = (f3),		\
+		[VDD_DIG_##l4] = (f4),		\
+	},					\
+	.num_rate_max = VDD_DIG_NUM
+
 #define VDD_MM_PLL_FMAX_MAP1(l1, f1) \
 	.vdd_class = &vdd_mmsscc_mx,		\
 	.rate_max = (unsigned long[VDD_DIG_NUM]) {	\
@@ -95,6 +105,16 @@
 	.num_rate_max = VDD_DIG_NUM
 
 
+#define VDD_MM_PLL_FMAX_MAP4(l1, f1, l2, f2, l3, f3, l4, f4) \
+	.vdd_class = &vdd_mmsscc_mx,			\
+	.rate_max = (unsigned long[VDD_DIG_NUM]) {	\
+		[VDD_DIG_##l1] = (f1),		\
+		[VDD_DIG_##l2] = (f2),		\
+		[VDD_DIG_##l3] = (f3),		\
+		[VDD_DIG_##l4] = (f4),		\
+	},					\
+	.num_rate_max = VDD_DIG_NUM
+
 #define VDD_GPU_MX_FMAX_MAP1(l1, f1)  \
 	.vdd_class = &vdd_gpucc_mx,		\
 	.rate_max = (unsigned long[VDD_MX_NUM]) {	\
@@ -108,6 +128,16 @@
 		[VDD_MX_##l1] = (f1),			\
 		[VDD_MX_##l2] = (f2),			\
 		[VDD_MX_##l3] = (f3),			\
+	},						\
+	.num_rate_max = VDD_MX_NUM
+
+#define VDD_GPU_MX_FMAX_MAP4(l1, f1, l2, f2, l3, f3, l4, f4) \
+	.vdd_class = &vdd_gpucc_mx,			\
+	.rate_max = (unsigned long[VDD_MX_NUM]) {		\
+		[VDD_MX_##l1] = (f1),			\
+		[VDD_MX_##l2] = (f2),			\
+		[VDD_MX_##l3] = (f3),			\
+		[VDD_MX_##l4] = (f4),			\
 	},						\
 	.num_rate_max = VDD_MX_NUM
 
