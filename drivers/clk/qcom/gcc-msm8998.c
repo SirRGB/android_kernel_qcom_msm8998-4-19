@@ -40,6 +40,9 @@
 
 #define F(f, s, h, m, n) { (f), (s), (2 * (h) - 1), (m), (n) }
 
+#define GCC_MMSS_MISC		0x0902C
+#define GCC_GPU_MISC		0x71028
+
 static DEFINE_VDD_REGULATORS(vdd_dig, VDD_DIG_NUM, 1, vdd_corner);
 static DEFINE_VDD_REGULATORS(vdd_dig_ao, VDD_DIG_NUM, 1, vdd_corner);
 
@@ -2927,13 +2930,9 @@ static int gcc_msm8998_probe(struct platform_device *pdev)
 		return PTR_ERR(vdd_dig_ao.regulator[0]);
 	}
 
-	/*
-	 * GCC_MMSS_MISC - GCC_GPU_MISC:
-	 * 1. Disable the GPLL0 active input to MMSS and GPU
-	 * 2. Select clk division 1 (CLK/2)
-	 */
-	regmap_write(regmap, 0x0902C, 0x10003); /* MMSS*/
-	regmap_write(regmap, 0x71028, 0x10003); /* GPU */
+	/* Disable the GPLL0 active input to MMSS and GPU and configure div-2 */
+	regmap_write_bits(regmap, GCC_MMSS_MISC, 0x10003, 0x10003);
+	regmap_write_bits(regmap, GCC_GPU_MISC, 0x10003, 0x10003);
 
 	ret = qcom_cc_really_probe(pdev, &gcc_msm8998_desc, regmap);
 	if (ret) {
