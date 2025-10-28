@@ -147,7 +147,6 @@ static struct pll_vco fabia_vco[] = {
 
 static unsigned int soft_vote_gpll0;
 
-/*
 static const struct alpha_pll_config gpll0_config = {
 	.l = 0x1F,
 	.alpha = 0x4000,
@@ -156,7 +155,6 @@ static const struct alpha_pll_config gpll0_config = {
 	.user_ctl_val = 0x1,
 	.user_ctl_hi_val = 0x00004805,
 };
-*/
 
 static struct clk_alpha_pll gpll0 = {
 	.offset = 0x0,
@@ -166,7 +164,7 @@ static struct clk_alpha_pll gpll0 = {
 	.soft_vote = &soft_vote_gpll0,
 	.soft_vote_mask = PLL_SOFT_VOTE_PRIMARY,
 	.flags = SUPPORTS_FSM_VOTE,
-	/* .config = &gpll0_config, */
+	.config = &gpll0_config,
 	.clkr = {
 		.enable_reg = 0x52000,
 		.enable_mask = BIT(0),
@@ -198,6 +196,7 @@ static struct clk_alpha_pll gpll0_ao = {
 	.soft_vote = &soft_vote_gpll0,
 	.soft_vote_mask = PLL_SOFT_VOTE_CPU,
 	.flags = SUPPORTS_FSM_VOTE,
+	.config = &gpll0_config,
 	.clkr = {
 		.enable_reg = 0x52000,
 		.enable_mask = BIT(0),
@@ -2929,6 +2928,8 @@ static int gcc_msm8998_probe(struct platform_device *pdev)
 					"Unable to get vdd_dig_ao regulator\n");
 		return PTR_ERR(vdd_dig_ao.regulator[0]);
 	}
+
+	clk_fabia_pll_configure(&gpll0, regmap, &gpll0_config);
 
 	/* Disable the GPLL0 active input to MMSS and GPU and configure div-2 */
 	regmap_write_bits(regmap, GCC_MMSS_MISC, 0x10003, 0x10003);
