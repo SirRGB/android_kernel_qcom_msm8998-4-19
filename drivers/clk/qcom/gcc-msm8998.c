@@ -163,7 +163,7 @@ static struct clk_alpha_pll gpll0 = {
 	.num_vco = ARRAY_SIZE(fabia_vco),
 	.soft_vote = &soft_vote_gpll0,
 	.soft_vote_mask = PLL_SOFT_VOTE_PRIMARY,
-	.flags = SUPPORTS_FSM_VOTE,
+	.flags = SUPPORTS_FSM_VOTE | SUPPORTS_FSM_MODE,
 	.config = &gpll0_config,
 	.clkr = {
 		.enable_reg = 0x52000,
@@ -195,7 +195,7 @@ static struct clk_alpha_pll gpll0_ao = {
 	.num_vco = ARRAY_SIZE(fabia_vco),
 	.soft_vote = &soft_vote_gpll0,
 	.soft_vote_mask = PLL_SOFT_VOTE_CPU,
-	.flags = SUPPORTS_FSM_VOTE,
+	.flags = SUPPORTS_FSM_VOTE | SUPPORTS_FSM_MODE,
 	.config = &gpll0_config,
 	.clkr = {
 		.enable_reg = 0x52000,
@@ -2940,9 +2940,6 @@ static int gcc_msm8998_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Failed to register GCC clocks\n");
 		return ret;
 	}
-
-	/* Set FSM Mode on GPLL0 (write to PLL_MODE register) */
-	qcom_pll_set_fsm_mode(gpll0.clkr.regmap, gpll0.offset, 6, 0);
 
 	dev_info(&pdev->dev, "Registered GCC clocks\n");
 	return 0;
