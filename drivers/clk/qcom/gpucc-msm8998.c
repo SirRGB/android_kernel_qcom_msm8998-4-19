@@ -101,14 +101,19 @@ static const char * const gpucc_parent_names_1[] = {
 
 static struct clk_branch gpucc_xo = {
 	.halt_reg = 0x01020,
-	.clkr.hw.init = &(struct clk_init_data) {
-		.name = "gpucc_xo",
-		.parent_names = (const char*[]) {
-			"bi_tcxo_ao",
+	.halt_check = BRANCH_HALT,
+	.clkr = {
+		.enable_reg = 0x01020,
+		.enable_mask = BIT(0),
+		.hw.init = &(struct clk_init_data) {
+			.name = "gpucc_xo",
+			.parent_names = (const char*[]) {
+				"bi_tcxo_ao",
+			},
+			.num_parents = 1,
+			.flags = CLK_IS_CRITICAL,
+			.ops = &clk_branch2_ops,
 		},
-		.num_parents = 1,
-		.flags = CLK_IS_CRITICAL,
-		.ops = &clk_branch2_ops,
 	},
 };
 
@@ -294,6 +299,7 @@ static struct clk_rcg2 rbcpr_clk_src = {
 
 static struct clk_branch gpucc_gfx3d_clk = {
 	.halt_reg = 0x1098,
+	.halt_check = BRANCH_HALT,
 	.clkr = {
 		.enable_reg = 0x1098,
 		.enable_mask = BIT(0),
@@ -314,6 +320,7 @@ static struct clk_branch gpucc_gfx3d_clk = {
 
 static struct clk_branch gpucc_rbbmtimer_clk = {
 	.halt_reg = 0x10D0,
+	.halt_check = BRANCH_HALT,
 	.clkr = {
 		.enable_reg = 0x10D0,
 		.enable_mask = BIT(0),
@@ -331,6 +338,7 @@ static struct clk_branch gpucc_rbbmtimer_clk = {
 
 static struct clk_branch gpucc_gfx3d_isense_clk = {
 	.halt_reg = 0x1124,
+	.halt_check = BRANCH_HALT,
 	.clkr = {
 		.enable_reg = 0x1124,
 		.enable_mask = BIT(0),
@@ -348,6 +356,7 @@ static struct clk_branch gpucc_gfx3d_isense_clk = {
 
 static struct clk_branch gpucc_rbcpr_clk = {
 	.halt_reg = 0x01054,
+	.halt_check = BRANCH_HALT,
 	.clkr = {
 		.enable_reg = 0x01054,
 		.enable_mask = BIT(0),
