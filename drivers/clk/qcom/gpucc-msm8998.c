@@ -69,7 +69,7 @@ static DEFINE_VDD_REGULATORS(vdd_gpucc, VDD_GFX_MAX, 1, vdd_gpucc_corner);
 static DEFINE_VDD_REGULATORS(vdd_gpucc_mx, VDD_MX_NUM, 1, vdd_corner);
 
 enum {
-	P_GPU_XO,
+	P_BI_TCXO,
 	P_GPLL0_OUT_MAIN,
 	P_GPU_CC_PLL0_OUT_EVEN,
 	P_GPU_CC_PLL0_OUT_MAIN,
@@ -78,37 +78,42 @@ enum {
 };
 
 static const struct parent_map gpucc_parent_map_0[] = {
-	{ P_GPU_XO, 0 },
+	{ P_BI_TCXO, 0 },
 	{ P_CRC_DIV,  1 },
 	{ P_GPU_CC_PLL0_OUT_ODD, 2 },
 };
 
 static const char * const gpucc_parent_names_0[] = {
-	"gpucc_xo",
+	"bi_tcxo_ao",
 	"crc_div",
 	"gpucc_pll0_out_odd",
 };
 
 static const struct parent_map gpucc_parent_map_1[] = {
-	{ P_GPU_XO, 0 },
+	{ P_BI_TCXO, 0 },
 	{ P_GPLL0_OUT_MAIN, 5 },
 };
 
 static const char * const gpucc_parent_names_1[] = {
-	"gpucc_xo",
+	"bi_tcxo_ao",
 	"gcc_gpu_gpll0_clk",
 };
 
-static struct clk_branch gpucc_xo = {
-	.halt_reg = 0x01020,
-	.clkr.hw.init = &(struct clk_init_data) {
-		.name = "gpucc_xo",
-		.parent_names = (const char*[]) {
-			"bi_tcxo_ao",
+static struct clk_branch gpucc_cxo_clk = {
+	.halt_reg = 0x1020,
+	.halt_check = BRANCH_HALT,
+	.clkr = {
+		.enable_reg = 0x1020,
+		.enable_mask = BIT(0),
+		.hw.init = &(struct clk_init_data) {
+			.name = "gpucc_cxo_clk",
+			.parent_names = (const char*[]) {
+				"bi_tcxo_ao",
+			},
+			.num_parents = 1,
+			.flags = CLK_IS_CRITICAL,
+			.ops = &clk_branch2_ops,
 		},
-		.num_parents = 1,
-		.flags = CLK_IS_CRITICAL,
-		.ops = &clk_branch2_ops,
 	},
 };
 
@@ -134,7 +139,7 @@ static struct clk_alpha_pll gpu_pll0_pll = {
 	.config = &gpu_pll0_config,
 	.clkr.hw.init = &(struct clk_init_data) {
 			.name = "gpu_cc_pll0",
-			.parent_names = (const char *[]){ "gpucc_xo" },
+			.parent_names = (const char *[]){ "bi_tcxo_ao" },
 			.num_parents = 1,
 			.ops = &clk_alpha_pll_fabia_ops,
 			VDD_GPU_MX_FMAX_MAP1(MIN, 1420000500),
@@ -231,7 +236,7 @@ static struct clk_rcg2 gfx3d_clk_src = {
 };
 
 static struct freq_tbl ftbl_rbbmtimer_clk_src[] = {
-	F( 19200000,  P_GPU_XO,    1,    0,     0),
+	F( 19200000, P_BI_TCXO,    1,    0,     0),
 	{ }
 };
 
@@ -250,7 +255,7 @@ static struct clk_rcg2 rbbmtimer_clk_src = {
 };
 
 static struct freq_tbl ftbl_gfx3d_isense_clk_src[] = {
-	F(  19200000,  P_GPU_XO,    1,    0,     0),
+	F(  19200000, P_BI_TCXO,    1,    0,     0),
 	F(  40000000,   P_GPLL0_OUT_MAIN,   15,    0,     0),
 	F( 200000000,   P_GPLL0_OUT_MAIN,    3,    0,     0),
 	F( 300000000,   P_GPLL0_OUT_MAIN,    2,    0,     0),
@@ -273,7 +278,7 @@ static struct clk_rcg2 gfx3d_isense_clk_src = {
 };
 
 static struct freq_tbl ftbl_rbcpr_clk_src[] = {
-	F( 19200000,  P_GPU_XO,    1,    0,     0),
+	F( 19200000, P_BI_TCXO,    1,    0,     0),
 	F( 50000000,   P_GPLL0_OUT_MAIN,   12,    0,     0),
 	{ }
 };
@@ -294,6 +299,7 @@ static struct clk_rcg2 rbcpr_clk_src = {
 
 static struct clk_branch gpucc_gfx3d_clk = {
 	.halt_reg = 0x1098,
+	.halt_check = BRANCH_HALT,
 	.clkr = {
 		.enable_reg = 0x1098,
 		.enable_mask = BIT(0),
@@ -314,6 +320,7 @@ static struct clk_branch gpucc_gfx3d_clk = {
 
 static struct clk_branch gpucc_rbbmtimer_clk = {
 	.halt_reg = 0x10D0,
+	.halt_check = BRANCH_HALT,
 	.clkr = {
 		.enable_reg = 0x10D0,
 		.enable_mask = BIT(0),
@@ -331,6 +338,7 @@ static struct clk_branch gpucc_rbbmtimer_clk = {
 
 static struct clk_branch gpucc_gfx3d_isense_clk = {
 	.halt_reg = 0x1124,
+	.halt_check = BRANCH_HALT,
 	.clkr = {
 		.enable_reg = 0x1124,
 		.enable_mask = BIT(0),
@@ -347,9 +355,10 @@ static struct clk_branch gpucc_gfx3d_isense_clk = {
 };
 
 static struct clk_branch gpucc_rbcpr_clk = {
-	.halt_reg = 0x01054,
+	.halt_reg = 0x1054,
+	.halt_check = BRANCH_HALT,
 	.clkr = {
-		.enable_reg = 0x01054,
+		.enable_reg = 0x1054,
 		.enable_mask = BIT(0),
 		.hw.init = &(struct clk_init_data) {
 			.name = "gpucc_rbcpr_clk",
@@ -462,7 +471,7 @@ static struct clk_regmap *gfxcc_msm8998_clocks[] = {
 };
 
 static struct clk_regmap *gpucc_msm8998_clocks[] = {
-	[GPUCC_XO] = &gpucc_xo.clkr,
+	[GPUCC_XO] = &gpucc_cxo_clk.clkr,
 	[RBCPR_CLK_SRC] = &rbcpr_clk_src.clkr,
 	[GPUCC_RBCPR_CLK] = &gpucc_rbcpr_clk.clkr,
 	[RBBMTIMER_CLK_SRC] = &rbbmtimer_clk_src.clkr,
@@ -647,14 +656,9 @@ int gpucc_msm8998_probe(struct platform_device *pdev)
 		return rc;
 	}
 
-	/* Set the rate for GPU XO to make the clk API happy */
-	clk_set_rate(gpucc_xo.clkr.hw.clk, 19200000);
-
-	/*
-	 * gpucc_xo works as the root clock for all GPUCC RCGs and GDSCs.
-	 *  Keep it enabled always.
-	 */
-	clk_prepare_enable(gpucc_xo.clkr.hw.clk);
+	/* Vote for the GPU CXO branch; the GPU clocks parent bi_tcxo_ao. */
+	clk_set_rate(gpucc_cxo_clk.clkr.hw.clk, 19200000);
+	clk_prepare_enable(gpucc_cxo_clk.clkr.hw.clk);
 
 	dev_info(&pdev->dev, "Registered GPUCC clocks\n");
 	return 0;
