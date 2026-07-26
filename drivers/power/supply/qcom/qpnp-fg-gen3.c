@@ -4349,7 +4349,7 @@ static int fg_hw_init(struct fg_dev *fg)
 	}
 
 #ifdef CONFIG_MACH_XIAOMI_MSM8998
-	rc = fg_sram_masked_write(chip, 19, 0, 0x08, 0x08, FG_IMA_DEFAULT);
+	rc = fg_sram_masked_write(fg, 19, 0, 0x08, 0x08, FG_IMA_DEFAULT);
 	if (rc < 0) {
 		pr_err("Error in writing cc soc auto clear rc=%d\n", rc);
 	}
