@@ -38,5 +38,3 @@
 
 #include "msm8998-sde.dtsi"
 #include "msm8998-sde-display.dtsi"
-
-
