@@ -30,7 +30,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
-#include <linux/mfd/msm-cdc-pinctrl.h>
+#include <asoc/msm-cdc-pinctrl.h>
 #include <soc/qcom/socinfo.h>
 #include "usb-headset.h"
 
@@ -300,13 +300,12 @@ int usbhs_init(struct platform_device *pdev)
 	}
 
 	usbhs->power_supply_notifier.notifier_call = usbhs_power_supply_event;
+	INIT_WORK(&usbhs->psy_work, usbhs_psy_work);
 	ret = power_supply_reg_notifier(&usbhs->power_supply_notifier);
 	if (ret < 0) {
 		pr_err("%s: Error register power supply notifier!\n", __func__);
 		goto err_free_psy;
 	}
-	INIT_WORK(&usbhs->psy_work, usbhs_psy_work);
-
 	/* Set initial Type-C state */
 	usbhs->pr = POWER_SUPPLY_TYPEC_PR_DUAL;
 	usbhs->typec_mode = usbhs_get_typec_mode(usbhs);
@@ -331,18 +330,22 @@ err_free_usbhs:
 }
 EXPORT_SYMBOL(usbhs_init);
 
-void usbhs_deinit()
+void usbhs_deinit(void)
 {
-	if (!usb_hs) {
-		cancel_work_sync(&usb_hs->psy_work);
-		power_supply_unreg_notifier(&usb_hs->power_supply_notifier);
-		power_supply_put(usb_hs->psy);
-		gpio_free(usb_hs->asel_gpio);
-		gpio_free(usb_hs->hsdet_gpio);
-		usb_hs = NULL;
-	}
+	struct usb_headset *usbhs = usb_hs;
 
-	return;
+	if (!usbhs)
+		return;
+
+	usb_hs = NULL;
+	power_supply_unreg_notifier(&usbhs->power_supply_notifier);
+	cancel_work_sync(&usbhs->psy_work);
+	power_supply_put(usbhs->psy);
+	if (gpio_is_valid(usbhs->asel_gpio))
+		gpio_free(usbhs->asel_gpio);
+	if (gpio_is_valid(usbhs->hsdet_gpio))
+		gpio_free(usbhs->hsdet_gpio);
+	of_node_put(usbhs->us_euro_en_gpio_p);
 }
 EXPORT_SYMBOL(usbhs_deinit);
 
