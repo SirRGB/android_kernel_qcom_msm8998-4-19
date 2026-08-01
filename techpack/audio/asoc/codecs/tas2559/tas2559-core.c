@@ -2445,36 +2445,28 @@ void tas2559_clear_firmware(struct TFirmware *pFirmware)
 static int tas2559_load_calibration(struct tas2559_priv *pTAS2559,	char *pFileName)
 {
 	int nResult = 0;
-	int nFile;
-	mm_segment_t fs;
+	struct file *file;
+	loff_t pos = 0;
 	unsigned char pBuffer[1000];
-	int nSize = 0;
+	ssize_t nSize = 0;
 
 	dev_dbg(pTAS2559->dev, "%s:\n", __func__);
 
-	fs = get_fs();
-	set_fs(KERNEL_DS);
-	nFile = sys_open(pFileName, O_RDONLY, 0);
-
-	dev_info(pTAS2559->dev, "TAS2559 calibration file = %s, handle = %d\n",
-		 pFileName, nFile);
-
-	if (nFile >= 0) {
-		nSize = sys_read(nFile, pBuffer, 1000);
-		sys_close(nFile);
+	file = filp_open(pFileName, O_RDONLY, 0);
+	if (!IS_ERR(file)) {
+		nSize = kernel_read(file, pBuffer, sizeof(pBuffer), &pos);
+		filp_close(file, NULL);
 	} else {
 		dev_err(pTAS2559->dev, "TAS2559 cannot open calibration file: %s\n",
 			pFileName);
-		nResult = -EINVAL;
+		nResult = PTR_ERR(file);
 	}
 
-	set_fs(fs);
-
-	if (!nSize)
+	if (nSize <= 0)
 		goto end;
 
 	tas2559_clear_firmware(pTAS2559->mpCalFirmware);
-	dev_info(pTAS2559->dev, "TAS2559 calibration file size = %d\n", nSize);
+	dev_info(pTAS2559->dev, "TAS2559 calibration file size = %zd\n", nSize);
 	nResult = fw_parse(pTAS2559, pTAS2559->mpCalFirmware, pBuffer, nSize);
 
 	if (nResult)
