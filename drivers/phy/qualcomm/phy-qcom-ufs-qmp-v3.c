@@ -20,14 +20,33 @@ static
 int ufs_qcom_phy_qmp_v3_phy_calibrate(struct ufs_qcom_phy *ufs_qcom_phy,
 					bool is_rate_B, bool is_g4)
 {
+	struct ufs_qcom_phy_calibration *tbl_A = phy_cal_table_rate_A;
+	int tbl_size_A = ARRAY_SIZE(phy_cal_table_rate_A);
+
+	if (ufs_qcom_phy->host_ctrl_rev_major == 0x3 &&
+	    ufs_qcom_phy->host_ctrl_rev_step == 0x0000) {
+		if (ufs_qcom_phy->host_ctrl_rev_minor == 0x000) {
+			tbl_A = phy_cal_table_rate_A_3_0_0;
+			tbl_size_A = ARRAY_SIZE(phy_cal_table_rate_A_3_0_0);
+		} else if (ufs_qcom_phy->host_ctrl_rev_minor == 0x001) {
+			tbl_A = phy_cal_table_rate_A_3_1_0;
+			tbl_size_A = ARRAY_SIZE(phy_cal_table_rate_A_3_1_0);
+		}
+	}
+
+	dev_info(ufs_qcom_phy->dev,
+		 "controller %x.%03x.%04x, calibration entries %d\n",
+		 ufs_qcom_phy->host_ctrl_rev_major,
+		 ufs_qcom_phy->host_ctrl_rev_minor,
+		 ufs_qcom_phy->host_ctrl_rev_step, tbl_size_A);
+
 	/*
 	 * Writing PHY calibration in this order:
 	 * 1. Write Rate-A calibration first (1-lane mode).
 	 * 2. Write 2nd lane configuration if needed.
 	 * 3. Write Rate-B calibration overrides
 	 */
-	ufs_qcom_phy_write_tbl(ufs_qcom_phy, phy_cal_table_rate_A,
-			       ARRAY_SIZE(phy_cal_table_rate_A));
+	ufs_qcom_phy_write_tbl(ufs_qcom_phy, tbl_A, tbl_size_A);
 	if (ufs_qcom_phy->lanes_per_direction == 2)
 		ufs_qcom_phy_write_tbl(ufs_qcom_phy, phy_cal_table_2nd_lane,
 				       ARRAY_SIZE(phy_cal_table_2nd_lane));
