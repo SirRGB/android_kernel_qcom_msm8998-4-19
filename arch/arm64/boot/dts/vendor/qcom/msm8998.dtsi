@@ -1870,17 +1870,19 @@
 			 0x140 /* GSI_RING_BASE_ADDR_H */
 			 0x1a4>; /* GSI_IF_STS */
 		qcom,dwc-usb3-msm-tx-fifo-size = <21288>;
-		extcon = <&pmi8998_pdphy>, <&pmi8998_charger>;
+		extcon = <&pmi8998_pdphy>;
 		qcom,pm-qos-latency = <41>; /* CPU-CLUSTER-WFI-LVL latency +1 */
 
 		clocks = <&clock_gcc GCC_USB30_MASTER_CLK>,
 			<&clock_gcc GCC_CFG_NOC_USB3_AXI_CLK>,
+			<&clock_gcc GCC_AGGRE1_USB3_AXI_CLK>,
 			<&clock_gcc GCC_USB30_MOCK_UTMI_CLK>,
 			<&clock_gcc GCC_USB30_SLEEP_CLK>,
+			<&clock_gcc GCC_USB_PHY_CFG_AHB2PHY_CLK>,
 			<&clock_rpmcc CXO_SMD_DWC3_CLK>;
 
-		clock-names = "core_clk", "iface_clk",
-				"utmi_clk", "sleep_clk", "xo";
+		clock-names = "core_clk", "iface_clk", "bus_aggr_clk",
+				"utmi_clk", "sleep_clk", "cfg_ahb_clk", "xo";
 
 		qcom,core-clk-rate = <120000000>;
 		qcom,core-clk-rate-hs = <60000000>;
