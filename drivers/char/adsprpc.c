@@ -2621,7 +2621,8 @@ static int fastrpc_init_process(struct fastrpc_file *fl,
 		remote_arg_t ra[1];
 		int tgid = fl->tgid;
 
-		if (fl->dev_minor == MINOR_NUM_DEV) {
+		if (fl->dev_minor == MINOR_NUM_DEV &&
+			fl->apps->secure_flag) {
 			err = -ECONNREFUSED;
 			pr_err("adsprpc: %s: untrusted app trying to attach to privileged DSP PD\n",
 				__func__);
@@ -2767,7 +2768,8 @@ static int fastrpc_init_process(struct fastrpc_file *fl,
 			unsigned int pageslen;
 		} inbuf;
 
-		if (fl->dev_minor == MINOR_NUM_DEV) {
+		if (fl->dev_minor == MINOR_NUM_DEV &&
+			fl->apps->secure_flag) {
 			err = -ECONNREFUSED;
 			pr_err("adsprpc: %s: untrusted app trying to attach to audio PD\n",
 				__func__);
