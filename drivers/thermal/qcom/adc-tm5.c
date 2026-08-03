@@ -21,6 +21,8 @@
 #define ADC_TM_STATUS_HIGH			0x0b
 #define ADC_TM_NUM_BTM				0x0f
 
+#define ADC_TM_NUM_CHANNELS_PM8998		8
+
 #define ADC_TM_ADC_DIG_PARAM			0x42
 #define ADC_TM_FAST_AVG_CTL			0x43
 #define ADC_TM_FAST_AVG_EN			BIT(7)
@@ -1047,11 +1049,16 @@ static int adc_tm5_init(struct adc_tm_chip *chip, uint32_t dt_chans)
 		dig_param_len = 2;
 		pmic_subtype_660 = true;
 	} else {
-		ret = adc_tm5_read_reg(chip, ADC_TM_NUM_BTM,
-					&channels_available, 1);
-		if (ret < 0) {
-			pr_err("read failed for BTM channels\n");
-			return ret;
+		if ((chip->pmic_rev_id) &&
+		    (chip->pmic_rev_id->pmic_subtype == PM8998_SUBTYPE)) {
+			channels_available = ADC_TM_NUM_CHANNELS_PM8998;
+		} else {
+			ret = adc_tm5_read_reg(chip, ADC_TM_NUM_BTM,
+						&channels_available, 1);
+			if (ret < 0) {
+				pr_err("read failed for BTM channels\n");
+				return ret;
+			}
 		}
 
 		if (dt_chans > channels_available) {
