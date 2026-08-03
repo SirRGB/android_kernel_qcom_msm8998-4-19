@@ -3152,6 +3152,8 @@
 		qcom,vdd-3.3-ch0-config = <3104000 3312000>;
 		qcom,icnss-vadc = <&pm8998_vadc>;
 		qcom,icnss-adc_tm = <&pm8998_adc_tm>;
+		io-channels = <&pm8998_vadc ADC_VPH_PWR>;
+		io-channel-names = "icnss";
 
 		qcom,smp2p_map_wlan_1_in {
 			interrupts-extended = <&smp2p_wlan_1_in 0 0>,
