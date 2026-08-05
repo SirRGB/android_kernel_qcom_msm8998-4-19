@@ -1518,7 +1518,6 @@
 		clocks = <&clock_rpmcc RPM_SMD_IPA_CLK>;
 		clock-names = "core_clk";
 		qcom,arm-smmu;
-		qcom,iommu-dma = "fastmap";
 		qcom,smmu-disable-htw;
 		qcom,msm-bus,name = "ipa";
 		qcom,msm-bus,num-cases = <5>;
@@ -1573,6 +1572,7 @@
 			compatible = "qcom,ipa-smmu-ap-cb";
 			iommus = <&anoc2_smmu 0x18e0>;
 			qcom,iommu-dma-addr-pool = <0x20000000 0x40000000>;
+			qcom,iommu-dma = "fastmap";
 			qcom,additional-mapping =
 				<0x146BD000 0x146BD000 0x2000>;
 		};
