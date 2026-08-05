@@ -1950,7 +1950,7 @@ static int msm_eeprom_platform_probe(struct platform_device *pdev)
 
 		if (strcmp(module_eeprom_name, eb_info->eeprom_name) != 0) {
 			CDBG("%s: eeprom identify failed (non fatal)! qcom,eeprom-name = %s, module_eeprom_name = %s\n", __func__, eb_info->eeprom_name, module_eeprom_name);
-			rc = -ENOMEM;
+			rc = -ENODEV;
 			goto power_down;
 		}
 #endif
