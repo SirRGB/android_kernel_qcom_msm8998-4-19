@@ -472,6 +472,9 @@ static bool clk_rcg2_current_config(struct clk_rcg2 *rcg,
 	u32 cfg, mask, new_cfg;
 	int index;
 
+	if (rcg->flags & FORCE_UPDATE_RCG)
+		return false;
+
 	if (rcg->mnd_width) {
 		mask = BIT(rcg->mnd_width) - 1;
 		regmap_read(rcg->clkr.regmap, rcg->cmd_rcgr + M_REG, &cfg);
