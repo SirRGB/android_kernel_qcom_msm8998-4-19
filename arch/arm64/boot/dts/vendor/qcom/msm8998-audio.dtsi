@@ -117,21 +117,13 @@
 	clock_audio: audio_ext_clk {
 		status = "ok";
 		compatible = "qcom,audio-ref-clk";
-
-		/* AUDIO_EXT_CLK_PMI */
-		qcom,codec-ext-clk-src = <0>;
-
-		/* Reference -- unused in 4.14 drivers */
+		qcom,codec-ext-clk-src = <13>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pm8998_gpio_13>;
 		qcom,audio-ref-clk-gpio = <&pm8998_gpios 13 0>;
-
-		/* Use RPM div_clk1 as PMI divider clock */
-		pmic-clock-names = "div_clk1";
-
-		pinctrl-names = "sleep", "active";
-		pinctrl-0 = <&spkr_i2s_clk_sleep &pm8998_gpio_13>;
-		pinctrl-1 = <&spkr_i2s_clk_active &pm8998_gpio_13>;
-		qcom,use-pinctrl = <1>;
-
+		clock-names = "osr_clk";
+		clocks = <&clock_rpmcc RPM_SMD_DIV_CLK1>;
+		qcom,node_has_rpm_clock;
 		#clock-cells = <1>;
 	};
 
