@@ -2016,12 +2016,65 @@ static int mdss_fb_start_disp_thread(struct msm_fb_data_type *mfd)
 	return ret;
 }
 
+/* max time to wait for the display commit thread to exit on stop */
+#define MDSS_FB_STOP_DISP_THREAD_TIMEOUT_MS 5000
+
+struct mdss_fb_stop_thread_ctx {
+	struct task_struct *thread;
+	struct completion *stopped;
+};
+
+static int __mdss_fb_stop_disp_thread_worker(void *data)
+{
+	struct mdss_fb_stop_thread_ctx *ctx = data;
+
+	kthread_stop(ctx->thread);
+	complete(ctx->stopped);
+	kfree(ctx);
+	return 0;
+}
+
+/*
+ * kthread_stop() blocks indefinitely until the target thread returns. If the
+ * display thread is stuck (e.g. waiting on hardware that never responds),
+ * this hangs the reboot/shutdown path forever. Run the stop on a helper
+ * thread and only wait on it with a bound, so a stuck display thread can no
+ * longer stall shutdown; mfd->disp_thread_stopped stays valid for the life
+ * of mfd, so the helper can safely signal it even after we give up waiting.
+ */
 static void mdss_fb_stop_disp_thread(struct msm_fb_data_type *mfd)
 {
+	struct mdss_fb_stop_thread_ctx *ctx;
+	struct task_struct *stopper;
+
 	pr_debug("%pS: stop display thread fb%d\n",
 		__builtin_return_address(0), mfd->index);
 
-	kthread_stop(mfd->disp_thread);
+	reinit_completion(&mfd->disp_thread_stopped);
+
+	ctx = kmalloc(sizeof(*ctx), GFP_KERNEL);
+	if (!ctx) {
+		kthread_stop(mfd->disp_thread);
+		goto out;
+	}
+
+	ctx->thread = mfd->disp_thread;
+	ctx->stopped = &mfd->disp_thread_stopped;
+
+	stopper = kthread_run(__mdss_fb_stop_disp_thread_worker, ctx,
+				"mdss_fb%d_stopper", mfd->index);
+	if (IS_ERR(stopper)) {
+		kfree(ctx);
+		kthread_stop(mfd->disp_thread);
+		goto out;
+	}
+
+	if (!wait_for_completion_timeout(&mfd->disp_thread_stopped,
+			msecs_to_jiffies(MDSS_FB_STOP_DISP_THREAD_TIMEOUT_MS)))
+		pr_err("fb%d: display thread did not stop within %dms, continuing shutdown without waiting\n",
+			mfd->index, MDSS_FB_STOP_DISP_THREAD_TIMEOUT_MS);
+
+out:
 	mfd->disp_thread = NULL;
 #ifdef CONFIG_FB_MSM_MDSS_FLICKER_FREE
 	mdss_fb_update_flicker_free_mfd(NULL);
@@ -2939,6 +2992,7 @@ static int mdss_fb_register(struct msm_fb_data_type *mfd)
 	init_completion(&mfd->no_update.comp);
 	init_completion(&mfd->power_off_comp);
 	init_completion(&mfd->power_set_comp);
+	init_completion(&mfd->disp_thread_stopped);
 	init_waitqueue_head(&mfd->commit_wait_q);
 	init_waitqueue_head(&mfd->idle_wait_q);
 	init_waitqueue_head(&mfd->ioctl_q);
