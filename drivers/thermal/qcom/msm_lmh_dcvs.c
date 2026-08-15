@@ -99,6 +99,7 @@ struct limits_dcvs_hw {
 	struct device_attribute lmh_freq_attr;
 	struct list_head list;
 	bool is_irq_enabled;
+	bool is_legacy;
 	struct mutex access_lock;
 	struct __limits_cdev_data *cdev_data;
 	uint32_t cdev_registered;
@@ -624,7 +625,8 @@ static int limits_dcvs_probe(struct platform_device *pdev)
 	}
 
 	/* Check legcay LMH HW enablement is needed or not */
-	if (of_property_read_bool(dn, "qcom,legacy-lmh-enable")) {
+	hw->is_legacy = of_property_read_bool(dn, "qcom,legacy-lmh-enable");
+	if (hw->is_legacy) {
 		/* Enable the thermal algorithm early */
 		ret = limits_dcvs_write(hw->affinity, LIMITS_SUB_FN_THERMAL,
 			 LIMITS_ALGO_MODE_ENABLE, 1, 0, 0);
@@ -703,11 +705,16 @@ static int limits_dcvs_probe(struct platform_device *pdev)
 	}
 
 	if (!no_cdev_register) {
-		hw->min_freq_reg = devm_ioremap(&pdev->dev, min_reg, 0x4);
-		if (!hw->min_freq_reg) {
-			pr_err("min frequency enable register remap failed\n");
-			ret = -ENOMEM;
-			goto unregister_sensor;
+		if (!hw->is_legacy) {
+			hw->min_freq_reg = devm_ioremap(&pdev->dev, min_reg, 0x4);
+			if (!hw->min_freq_reg) {
+				pr_err("min frequency enable register remap failed\n");
+				ret = -ENOMEM;
+				goto unregister_sensor;
+			}
+		} else {
+			/* Legacy does not support LMH-DCVSh floor mitigation */
+			cd_ops.floor_limit = NULL;
 		}
 	}
 
