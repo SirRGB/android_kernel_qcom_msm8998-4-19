@@ -451,10 +451,18 @@ sdm630-mtp.dtb \
         sda630-pm660a-qrd-hdk.dtb
 endif
 
+# MSM8998
+dtb-$(CONFIG_MACH_CHEESEBURGER) += oneplus/cheeseburger-msm8998-v2.1-dvt.dtb \
+					oneplus/cheeseburger-msm8998-v2.1.dtb \
+					oneplus/cheeseburger-msm8998-v2.1-pvt1.dtb \
+					oneplus/cheeseburger-msm8998-v2.1-backup.dtb
+
+dtb-$(CONFIG_MACH_DUMPLING) += oneplus/dumpling-msm8998-v2.1-dvt.dtb \
+					oneplus/dumpling-msm8998-v2.1.dtb \
+					oneplus/dumpling-msm8998-v2.1-second-resource.dtb \
+					oneplus/dumpling-msm8998-v2.1-backup.dtb
+
 always		:= $(dtb-y)
 subdir-y	:= $(dts-dirs)
 clean-files    := *.dtb *.dtbo
-dtb-$(CONFIG_MACH_CHEESEBURGER) += oneplus/cheeseburger-msm8998-v2.1.dtb
-
-dtb-$(CONFIG_MACH_DUMPLING) += oneplus/dumpling-msm8998-v2.1.dtb
 
