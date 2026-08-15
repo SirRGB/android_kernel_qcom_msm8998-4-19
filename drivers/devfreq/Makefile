@@ -14,6 +14,7 @@ obj-$(CONFIG_DEVFREQ_GOV_MEMLAT)       += governor_memlat.o
 obj-$(CONFIG_DEVFREQ_GOV_QCOM_ADRENO_TZ) += governor_msm_adreno_tz.o
 obj-$(CONFIG_DEVFREQ_GOV_QCOM_GPUBW_MON) += governor_bw_vbif.o
 obj-$(CONFIG_DEVFREQ_GOV_QCOM_GPUBW_MON) += governor_gpubw_mon.o
+obj-$(CONFIG_DEVFREQ_GOV_SPDM_HYP)	+= governor_spdm_bw_hyp.o
 obj-$(CONFIG_DEVFREQ_GOV_CDSPL3)	+= governor_cdsp_l3.o
 
 # DEVFREQ Drivers
@@ -23,6 +24,7 @@ obj-$(CONFIG_ARM_TEGRA_DEVFREQ)		+= tegra-devfreq.o
 obj-$(CONFIG_ARM_QCOM_DEVFREQ_FW)	+= devfreq_qcom_fw.o
 obj-$(CONFIG_QCOM_DEVFREQ_DEVBW)		+= devfreq_devbw.o
 obj-$(CONFIG_DEVFREQ_SIMPLE_DEV)	+= devfreq_simple_dev.o
+obj-$(CONFIG_DEVFREQ_SPDM)		+= devfreq_spdm.o devfreq_spdm_debugfs.o
 obj-$(CONFIG_ARM_QCOM_DEVFREQ_QOSLAT)	+= devfreq_qcom_qoslat.o
 obj-$(CONFIG_DEVFREQ_GOV_STATICMAP)	+= governor_staticmap.o
 
