@@ -456,9 +456,17 @@ static void register_cooling_device(struct work_struct *work)
 			}
 			hw->cdev_data[idx].max_freq = U32_MAX;
 			hw->cdev_data[idx].min_freq = 0;
-			hw->cdev_data[idx].cdev =
+			if (hw->is_legacy) {
+				/* Register platform cooling per cluster for legacy */
+				hw->cdev_data[idx].cdev = (idx == 0) ?
 					cpufreq_platform_cooling_register(
-							policy, &cd_ops);
+							policy, &cd_ops)
+					: hw->cdev_data[0].cdev;
+			} else {
+				hw->cdev_data[idx].cdev =
+						cpufreq_platform_cooling_register(
+								policy, &cd_ops);
+			}
 			if (IS_ERR_OR_NULL(hw->cdev_data[idx].cdev)) {
 				pr_err("CPU:%u cdev register error:%ld\n",
 					cpu, PTR_ERR(hw->cdev_data[idx].cdev));
