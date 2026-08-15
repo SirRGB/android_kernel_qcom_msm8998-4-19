@@ -885,4 +885,33 @@ config INPUT_SC27XX_VIBRA
 	  To compile this driver as a module, choose M here. The module will
 	  be called sc27xx_vibra.
 
+config INPUT_POWERKEY_PANIC
+	bool "Power key warm-restart debugger"
+	depends on POWER_RESET_QCOM
+	help
+	  Long-press the power key for five seconds to perform a warm restart.
+	  The restart bypasses userspace and can preserve ramoops logs while
+	  debugging an Android system that hangs before ADB becomes available.
+	  Runtime controls are exposed through /proc/powerkey/reboot.
+
+	  If unsure, say N.
+
+config POWERKEY_FORCE_WARM_REBOOT
+	bool "Force warm reboot by default"
+	depends on INPUT_POWERKEY_PANIC
+	help
+	  Force restarts to preserve memory by default while the power-key
+	  debugger is enabled. This allows the next kernel to recover the old
+	  console from ramoops after an early boot failure. The setting can be
+	  changed at runtime through /proc/powerkey/reboot.
+
+config POWERKEY_FORCE_REBOOT_REC
+	bool "Force reboot to recovery by default"
+	depends on INPUT_POWERKEY_PANIC
+	help
+	  Direct restarts to recovery by default so ramoops logs can be read
+	  without first booting Android again. The setting can be disabled at
+	  runtime through /proc/powerkey/reboot before leaving recovery and
+	  attempting another Android boot.
+
 endif

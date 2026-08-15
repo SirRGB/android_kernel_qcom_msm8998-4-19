@@ -73,6 +73,26 @@ static void *emergency_dload_mode_addr;
 static bool scm_dload_supported;
 
 static bool force_warm_reboot;
+#ifdef CONFIG_INPUT_POWERKEY_PANIC
+static bool powerkey_force_warm_reboot;
+static bool powerkey_force_reboot_recovery;
+
+void msm_powerkey_get_reboot_mode(bool *warm_reboot, bool *reboot_recovery)
+{
+	if (warm_reboot)
+		*warm_reboot = READ_ONCE(powerkey_force_warm_reboot);
+	if (reboot_recovery)
+		*reboot_recovery = READ_ONCE(powerkey_force_reboot_recovery);
+}
+EXPORT_SYMBOL_GPL(msm_powerkey_get_reboot_mode);
+
+void msm_powerkey_set_reboot_mode(bool warm_reboot, bool reboot_recovery)
+{
+	WRITE_ONCE(powerkey_force_warm_reboot, warm_reboot);
+	WRITE_ONCE(powerkey_force_reboot_recovery, reboot_recovery);
+}
+EXPORT_SYMBOL_GPL(msm_powerkey_set_reboot_mode);
+#endif
 
 /* interface for exporting attributes */
 struct reset_attribute {
@@ -467,6 +487,14 @@ static void halt_spmi_pmic_arbiter(void)
 static void msm_restart_prepare(const char *cmd)
 {
 	bool need_warm_reset = false;
+	bool force_warm = force_warm_reboot;
+
+#ifdef CONFIG_INPUT_POWERKEY_PANIC
+	force_warm |= READ_ONCE(powerkey_force_warm_reboot);
+	if (READ_ONCE(powerkey_force_reboot_recovery))
+		cmd = "recovery";
+#endif
+
 	/* Write download mode flags if we're panic'ing
 	 * Write download mode flags if restart_mode says so
 	 * Kill download mode if master-kill switch is set
@@ -486,11 +514,11 @@ static void msm_restart_prepare(const char *cmd)
 				(cmd != NULL && cmd[0] != '\0'));
 	}
 
-	if (force_warm_reboot)
+	if (force_warm)
 		pr_info("Forcing a warm reset of the system\n");
 
 	/* Hard reset the PMIC unless memory contents must be maintained. */
-	if (force_warm_reboot || need_warm_reset)
+	if (force_warm || need_warm_reset)
 		qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
 	else
 		qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);

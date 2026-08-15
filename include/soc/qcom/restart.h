@@ -6,11 +6,16 @@
 #ifndef _ASM_ARCH_MSM_RESTART_H_
 #define _ASM_ARCH_MSM_RESTART_H_
 
+#include <linux/types.h>
+
 #define RESTART_NORMAL 0x0
 #define RESTART_DLOAD  0x1
 
 void msm_set_restart_mode(int mode);
+#ifdef CONFIG_INPUT_POWERKEY_PANIC
+void msm_powerkey_get_reboot_mode(bool *warm_reboot, bool *reboot_recovery);
+void msm_powerkey_set_reboot_mode(bool warm_reboot, bool reboot_recovery);
+#endif
 extern int pmic_reset_irq;
 
 #endif
-
