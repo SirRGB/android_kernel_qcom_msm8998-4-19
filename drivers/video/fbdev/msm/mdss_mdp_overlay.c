@@ -2790,6 +2790,31 @@ done:
  *
  * Return number of resources released
  */
+/* max time to wait for a lock held by a stuck commit before giving up */
+#define MDSS_MDP_OVERLAY_RELEASE_LOCK_TIMEOUT_MS 5000
+
+static bool __mdss_mdp_overlay_trylock_timeout(struct mutex *lock)
+{
+	unsigned long timeout = jiffies +
+		msecs_to_jiffies(MDSS_MDP_OVERLAY_RELEASE_LOCK_TIMEOUT_MS);
+
+	while (!mutex_trylock(lock)) {
+		if (time_after(jiffies, timeout))
+			return false;
+		usleep_range(1000, 2000);
+	}
+	return true;
+}
+
+/*
+ * mdss_mdp_overlay_kickoff() holds ov_lock for the full commit/kickoff
+ * sequence, including hardware waits with no bound of their own. If the
+ * display commit thread is stuck in there during shutdown, a plain
+ * mutex_lock() here would hang the reboot path forever before it ever
+ * reaches mdss_fb_stop_disp_thread(). Give up after a bound instead of
+ * blocking indefinitely; skipping the release is safe since the SoC is
+ * about to reset anyway.
+ */
 static int __mdss_mdp_overlay_release_all(struct msm_fb_data_type *mfd,
 	struct file *file)
 {
@@ -2801,8 +2826,17 @@ static int __mdss_mdp_overlay_release_all(struct msm_fb_data_type *mfd,
 	pr_debug("releasing all resources for fb%d file:%pK\n",
 		mfd->index, file);
 
-	mutex_lock(&mdp5_data->ov_lock);
-	mutex_lock(&mdp5_data->list_lock);
+	if (!__mdss_mdp_overlay_trylock_timeout(&mdp5_data->ov_lock)) {
+		pr_err("fb%d: timed out waiting for ov_lock, skipping overlay release\n",
+			mfd->index);
+		return -ETIMEDOUT;
+	}
+	if (!__mdss_mdp_overlay_trylock_timeout(&mdp5_data->list_lock)) {
+		pr_err("fb%d: timed out waiting for list_lock, skipping overlay release\n",
+			mfd->index);
+		mutex_unlock(&mdp5_data->ov_lock);
+		return -ETIMEDOUT;
+	}
 	if (!mfd->ref_cnt && !list_empty(&mdp5_data->pipes_cleanup)) {
 		pr_debug("fb%d:: free pipes present in cleanup list\n",
 			mfd->index);
