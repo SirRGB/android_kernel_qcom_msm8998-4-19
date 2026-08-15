@@ -198,12 +198,6 @@ int smblib_get_usb_suspend(struct smb_charger *chg, int *suspend)
 	return rc;
 }
 
-struct apsd_result {
-	const char * const name;
-	const u8 bit;
-	const enum power_supply_type pst;
-};
-
 enum {
 	UNKNOWN,
 	SDP,
@@ -259,7 +253,7 @@ static const struct apsd_result const smblib_apsd_results[] = {
 	},
 };
 
-static const struct apsd_result *smblib_get_apsd_result(struct smb_charger *chg)
+const struct apsd_result *smblib_get_apsd_result(struct smb_charger *chg)
 {
 	int rc, i;
 	u8 apsd_stat, stat;
@@ -459,10 +453,7 @@ static int smblib_set_adapter_allowance(struct smb_charger *chg,
 	return rc;
 }
 
-#define MICRO_5V	5000000
-#define MICRO_9V	9000000
-#define MICRO_12V	12000000
-static int smblib_set_usb_pd_allowed_voltage(struct smb_charger *chg,
+int smblib_set_usb_pd_allowed_voltage(struct smb_charger *chg,
 					int min_allowed_uv, int max_allowed_uv)
 {
 	int rc;
@@ -582,7 +573,7 @@ static int smblib_request_dpdm(struct smb_charger *chg, bool enable)
 	return rc;
 }
 
-static void smblib_rerun_apsd(struct smb_charger *chg)
+void smblib_rerun_apsd(struct smb_charger *chg)
 {
 	int rc;
 
@@ -602,7 +593,7 @@ static void smblib_rerun_apsd(struct smb_charger *chg)
 		smblib_err(chg, "Couldn't re-run APSD rc=%d\n", rc);
 }
 
-static const struct apsd_result *smblib_update_usb_type(struct smb_charger *chg)
+const struct apsd_result *smblib_update_usb_type(struct smb_charger *chg)
 {
 	const struct apsd_result *apsd_result = smblib_get_apsd_result(chg);
 
@@ -618,6 +609,15 @@ static const struct apsd_result *smblib_update_usb_type(struct smb_charger *chg)
 			chg->real_charger_type == POWER_SUPPLY_TYPE_USB))
 			chg->real_charger_type = apsd_result->pst;
 	}
+
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	if (chg->dash_on) {
+		chg->real_charger_type = POWER_SUPPLY_TYPE_USB_DCP;
+		chg->usb_psy_desc.type = POWER_SUPPLY_TYPE_USB_DCP;
+	} else {
+		chg->usb_psy_desc.type = apsd_result->pst;
+	}
+#endif
 
 	smblib_dbg(chg, PR_MISC, "APSD=%s PD=%d\n",
 					apsd_result->name, chg->pd_active);
@@ -861,12 +861,6 @@ static int smblib_get_pulse_cnt(struct smb_charger *chg, int *count)
 	return rc;
 }
 
-#define USBIN_25MA	25000
-#define USBIN_100MA	100000
-#define USBIN_150MA	150000
-#define USBIN_500MA	500000
-#define USBIN_900MA	900000
-
 static int set_sdp_current(struct smb_charger *chg, int icl_ua)
 {
 	int rc;
@@ -967,7 +961,13 @@ int smblib_set_icl_current(struct smb_charger *chg, int icl_ua)
 	/* configure current */
 	if (chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_DEFAULT
 		&& (chg->real_charger_type == POWER_SUPPLY_TYPE_USB)) {
-		rc = set_sdp_current(chg, icl_ua);
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+		if (chg->non_std_chg_present)
+			rc = smblib_set_charge_param(chg, &chg->param.usb_icl,
+					icl_ua);
+		else
+#endif
+			rc = set_sdp_current(chg, icl_ua);
 		if (rc < 0) {
 			smblib_err(chg, "Couldn't set SDP ICL rc=%d\n", rc);
 			goto enable_icl_changed_interrupt;
@@ -2860,6 +2860,12 @@ int smblib_get_prop_typec_power_role(struct smb_charger *chg,
 int smblib_get_prop_pd_allowed(struct smb_charger *chg,
 			       union power_supply_propval *val)
 {
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	if (chg->pd_disabled) {
+		val->intval = 0;
+		return 0;
+	}
+#endif
 	val->intval = get_effective_result(chg->pd_allowed_votable);
 	return 0;
 }
@@ -3162,6 +3168,11 @@ static int __smblib_set_prop_pd_active(struct smb_charger *chg, bool pd_active)
 	bool orientation, sink_attached, hvdcp;
 	u8 stat;
 
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	if (chg->pd_disabled)
+		return 0;
+#endif
+
 	chg->pd_active = pd_active;
 	if (chg->pd_active) {
 		chg->real_charger_type = POWER_SUPPLY_TYPE_USB_PD;
@@ -3414,6 +3425,11 @@ int smblib_set_prop_pd_in_hard_reset(struct smb_charger *chg,
 				const union power_supply_propval *val)
 {
 	int rc = 0;
+
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	if (chg->pd_disabled)
+		return rc;
+#endif
 
 	if (chg->pd_hard_reset == val->intval)
 		return rc;
@@ -3679,6 +3695,15 @@ irqreturn_t smblib_handle_chg_state_change(int irq, void *data)
 	}
 
 	stat = stat & BATTERY_CHARGER_STATUS_MASK;
+
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	if (stat == TERMINATE_CHARGE) {
+		/* charge done, disable charging in software too */
+		chg->chg_done = true;
+		op_charging_en(chg, false);
+	}
+#endif
+
 	power_supply_changed(chg->batt_psy);
 	return IRQ_HANDLED;
 }
@@ -3729,6 +3754,12 @@ irqreturn_t smblib_handle_usbin_uv(int irq, void *data)
 	const struct apsd_result *apsd = smblib_get_apsd_result(chg);
 	int rc;
 	u8 stat = 0, max_pulses = 0;
+
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	chg->dash_on = get_prop_fast_chg_started(chg);
+	if (chg->dash_on)
+		return IRQ_HANDLED;
+#endif
 
 	smblib_dbg(chg, PR_INTERRUPT, "IRQ: %s\n", irq_data->name);
 	if (!chg->irq_info[SWITCH_POWER_OK_IRQ].irq_data)
@@ -3808,6 +3839,12 @@ void smblib_usb_plugin_hard_reset_locked(struct smb_charger *chg)
 	struct smb_irq_data *data;
 	struct storm_watch *wdata;
 
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	chg->dash_on = get_prop_fast_chg_started(chg);
+	if (chg->dash_on)
+		return;
+#endif
+
 	rc = smblib_read(chg, USBIN_BASE + INT_RT_STS_OFFSET, &stat);
 	if (rc < 0) {
 		smblib_err(chg, "Couldn't read USB_INT_RT_STS rc=%d\n", rc);
@@ -3856,6 +3893,14 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 	bool vbus_rising;
 	struct smb_irq_data *data;
 	struct storm_watch *wdata;
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	bool last_vbus_present;
+
+	last_vbus_present = chg->vbus_present;
+	chg->dash_on = get_prop_fast_chg_started(chg);
+	if (chg->dash_on)
+		return;
+#endif
 
 	rc = smblib_read(chg, USBIN_BASE + INT_RT_STS_OFFSET, &stat);
 	if (rc < 0) {
@@ -3866,6 +3911,16 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 	vbus_rising = (bool)(stat & USBIN_PLUGIN_RT_STS_BIT);
 	smblib_set_opt_freq_buck(chg, vbus_rising ? chg->chg_freq.freq_5V :
 						chg->chg_freq.freq_removal);
+
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	chg->vbus_present = vbus_rising;
+	if (last_vbus_present != chg->vbus_present) {
+		if (chg->vbus_present)
+			__pm_stay_awake(&chg->chg_wake_lock);
+		else
+			__pm_relax(&chg->chg_wake_lock);
+	}
+#endif
 
 	if (vbus_rising) {
 		if (smblib_get_prop_dfp_mode(chg) != POWER_SUPPLY_TYPEC_NONE) {
@@ -3880,6 +3935,15 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 		/* Remove FCC_STEPPER 1.5A init vote to allow FCC ramp up */
 		if (chg->fcc_stepper_enable)
 			vote(chg->fcc_votable, FCC_STEPPER_VOTER, false, 0);
+
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+		if (chg->charger_collpse) {
+			op_set_collapse_fet(chg, false);
+			chg->charger_collpse = false;
+		}
+		schedule_delayed_work(&chg->op_check_apsd_work,
+				msecs_to_jiffies(TIME_1000MS));
+#endif
 
 		/* Schedule work to enable parallel charger */
 		vote(chg->awake_votable, PL_DELAY_VOTER, true, 0);
@@ -3916,6 +3980,11 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 		rc = smblib_request_dpdm(chg, false);
 		if (rc < 0)
 			smblib_err(chg, "Couldn't disable DPDM rc=%d\n", rc);
+
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+		if (last_vbus_present != chg->vbus_present)
+			op_handle_usb_removal(chg);
+#endif
 	}
 
 	if (chg->connector_type == POWER_SUPPLY_CONNECTOR_MICRO_USB)
@@ -4310,6 +4379,50 @@ static void smblib_handle_apsd_done(struct smb_charger *chg, bool rising)
 		break;
 	}
 
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	{
+		int temp_region, current_limit_ua = 0;
+
+		if (apsd_result->bit == SDP_CHARGER_BIT)
+			current_limit_ua = DEFAULT_SDP_MA * 1000;
+		else if (apsd_result->bit == CDP_CHARGER_BIT)
+			current_limit_ua = DEFAULT_CDP_MA * 1000;
+		else if (apsd_result->bit == DCP_CHARGER_BIT ||
+				apsd_result->bit == FLOAT_CHARGER_BIT ||
+				apsd_result->bit == OCP_CHARGER_BIT)
+			current_limit_ua = DEFAULT_DCP_MA * 1000;
+
+		if (chg->is_aging_test)
+			current_limit_ua = DEFAULT_AGAING_CHG_MA * 1000;
+		if (current_limit_ua)
+			vote(chg->usb_icl_votable, DCP_VOTER, true,
+					current_limit_ua);
+
+		temp_region = op_battery_temp_region_get(chg);
+		if (temp_region != BATT_TEMP_COLD && temp_region != BATT_TEMP_HOT)
+			op_charging_en(chg, true);
+
+		if (apsd_result->bit == DCP_CHARGER_BIT ||
+				apsd_result->bit == OCP_CHARGER_BIT ||
+				apsd_result->bit == FLOAT_CHARGER_BIT) {
+			schedule_delayed_work(&chg->check_switch_dash_work,
+				msecs_to_jiffies(500));
+		} else if (!chg->usb_type_redet_done) {
+			schedule_delayed_work(&chg->re_det_work,
+				msecs_to_jiffies(TIME_1000MS));
+		} else {
+			schedule_delayed_work(
+				&chg->non_standard_charger_check_work,
+				msecs_to_jiffies(TIME_1000MS));
+		}
+		chg->op_apsd_done = true;
+
+		/* allow reading the external FG over I2C */
+		set_property_on_fg(chg,
+			POWER_SUPPLY_PROP_SET_ALLOW_READ_EXTERN_FG_IIC, true);
+	}
+#endif
+
 	smblib_dbg(chg, PR_INTERRUPT, "IRQ: apsd-done rising; %s detected\n",
 		   apsd_result->name);
 }
@@ -4323,6 +4436,12 @@ irqreturn_t smblib_handle_usb_source_change(int irq, void *data)
 
 	if (chg->fake_usb_insertion)
 		return IRQ_HANDLED;
+
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	chg->dash_on = get_prop_fast_chg_started(chg);
+	if (chg->dash_on)
+		return IRQ_HANDLED;
+#endif
 
 	rc = smblib_read(chg, APSD_STATUS_REG, &stat);
 	if (rc < 0) {
@@ -4876,6 +4995,12 @@ irqreturn_t smblib_handle_usb_typec_change(int irq, void *data)
 	struct smb_irq_data *irq_data = data;
 	struct smb_charger *chg = irq_data->parent_data;
 
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	chg->dash_on = get_prop_fast_chg_started(chg);
+	if (chg->dash_on)
+		return IRQ_HANDLED;
+#endif
+
 	if (chg->connector_type == POWER_SUPPLY_CONNECTOR_MICRO_USB) {
 		cancel_delayed_work_sync(&chg->uusb_otg_work);
 		vote(chg->awake_votable, OTG_DELAY_VOTER, true, 0);
@@ -4952,6 +5077,12 @@ irqreturn_t smblib_handle_switcher_power_ok(int irq, void *data)
 	struct storm_watch *wdata = &irq_data->storm_data;
 	int rc, usb_icl;
 	u8 stat;
+
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	chg->dash_on = get_prop_fast_chg_started(chg);
+	if (chg->dash_on)
+		return IRQ_HANDLED;
+#endif
 
 	if (!(chg->wa_flags & BOOST_BACK_WA))
 		return IRQ_HANDLED;
@@ -5686,6 +5817,10 @@ int smblib_init(struct smb_charger *chg)
 	chg->fake_input_current_limited = -EINVAL;
 	chg->fake_batt_status = -EINVAL;
 
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	op_dash_charger_init(chg);
+#endif
+
 	switch (chg->mode) {
 	case PARALLEL_MASTER:
 		rc = qcom_batt_init(&chg->chg_param);
@@ -5782,6 +5917,10 @@ int smblib_deinit(struct smb_charger *chg)
 	}
 
 	smblib_iio_deinit(chg);
+
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	op_dash_charger_deinit(chg);
+#endif
 
 	return 0;
 }
