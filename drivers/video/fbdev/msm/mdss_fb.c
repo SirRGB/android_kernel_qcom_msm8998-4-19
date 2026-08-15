@@ -49,6 +49,10 @@
 
 #include "mdss_livedisplay.h"
 
+#ifdef CONFIG_FB_MSM_MDSS_FLICKER_FREE
+#include "flicker_free.h"
+#endif
+
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MDSS_FB_NUM 3
 #else
@@ -2005,6 +2009,10 @@ static int mdss_fb_start_disp_thread(struct msm_fb_data_type *mfd)
 		mfd->disp_thread = NULL;
 	}
 
+#ifdef CONFIG_FB_MSM_MDSS_FLICKER_FREE
+	mdss_fb_update_flicker_free_mfd(mfd);
+#endif
+
 	return ret;
 }
 
@@ -2015,6 +2023,9 @@ static void mdss_fb_stop_disp_thread(struct msm_fb_data_type *mfd)
 
 	kthread_stop(mfd->disp_thread);
 	mfd->disp_thread = NULL;
+#ifdef CONFIG_FB_MSM_MDSS_FLICKER_FREE
+	mdss_fb_update_flicker_free_mfd(NULL);
+#endif
 }
 
 static void mdss_panel_validate_debugfs_info(struct msm_fb_data_type *mfd)
