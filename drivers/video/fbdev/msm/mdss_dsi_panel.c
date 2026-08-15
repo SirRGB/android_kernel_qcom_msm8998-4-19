@@ -848,6 +848,25 @@ static void mdss_dsi_panel_switch_mode(struct mdss_panel_data *pdata,
 		mdss_dsi_panel_dsc_pps_send(ctrl_pdata, &pdata->panel_info);
 }
 
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+/*
+ * Backlight remapping:
+ * level 0 - 55 retain
+ * level 55 - 230 -> 55 - 200
+ * level 230 - 255 -> 200 - 255
+ */
+static inline u32 backlight_level_remap(u32 level)
+{
+	if (level <= 55)
+		return level;
+
+	if (level <= 230)
+		return (level * 29 + 330) / 35;
+
+	return level * 11 / 5 - 306;
+}
+#endif
+
 static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 							u32 bl_level)
 {
@@ -866,6 +885,13 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 	/* Remap backlight value prior to HBM */
 	if (bl_level != 0)
 		bl_level = mdss_panel_calc_backlight(bl_level);
+#endif
+
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	if (ctrl_pdata->high_brightness_panel && ctrl_pdata->bklt_max == 255) {
+		pr_debug("%s goto backlight level remap\n", __func__);
+		bl_level = backlight_level_remap(bl_level);
+	}
 #endif
 
 	/* Enable HBM if bl_level is >= 80% of bklt_max */
@@ -3014,6 +3040,9 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	mdss_dsi_parse_dfps_config(np, ctrl_pdata);
 
 	mdss_dsi_set_refresh_rate_range(np, pinfo);
+
+	ctrl_pdata->high_brightness_panel = of_property_read_bool(np,
+			"qcom,mdss-dsi-high-brightness-panel");
 
 	pinfo->is_dba_panel = of_property_read_bool(np,
 			"qcom,dba-panel");
