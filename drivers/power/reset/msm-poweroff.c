@@ -660,6 +660,7 @@ static int msm_restart_probe(struct platform_device *pdev)
 			goto err_restart_reason;
 		}
 
+#ifdef CONFIG_POWER_RESET_QCOM_RECOVERY_COOKIE_DEFAULT
 		/*
 		 * Pre-arm a recognized restart-reason cookie as a standing
 		 * default. msm_restart_prepare() always overwrites this on
@@ -671,6 +672,7 @@ static int msm_restart_probe(struct platform_device *pdev)
 		 */
 		qpnp_pon_set_restart_reason(PON_RESTART_REASON_RECOVERY);
 		__raw_writel(0x77665502, restart_reason);
+#endif
 	}
 
 	mem = platform_get_resource_byname(pdev, IORESOURCE_MEM, "pshold-base");
