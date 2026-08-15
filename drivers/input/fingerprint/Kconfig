@@ -14,4 +14,15 @@ if INPUT_FINGERPRINT
 source "drivers/input/fingerprint/goodix_ta/Kconfig"
 source "drivers/input/fingerprint/fpc1268_tee/Kconfig"
 
+config FINGERPRINT_DETECT
+	tristate "fingerprint detect support"
+	depends on SPI_MASTER
+
+config FINGERPRINT_FPC
+	tristate "fpc fingerprint sensor support"
+	depends on SPI_MASTER
+
+config FINGERPRINT_GOODIX
+	tristate "goodix fingerprint sensor support"
+	depends on SPI_MASTER
 endif
