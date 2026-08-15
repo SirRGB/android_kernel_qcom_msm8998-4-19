@@ -659,6 +659,18 @@ static int msm_restart_probe(struct platform_device *pdev)
 			ret = -ENOMEM;
 			goto err_restart_reason;
 		}
+
+		/*
+		 * Pre-arm a recognized restart-reason cookie as a standing
+		 * default. msm_restart_prepare() always overwrites this on
+		 * any orderly reboot, so this only matters for a reset that
+		 * never goes through it (e.g. an uncontrolled hardware
+		 * watchdog bite during a hard lockup) - without a recognized
+		 * cookie present the bootloader falls back to EDL, with one
+		 * it can boot normally instead.
+		 */
+		qpnp_pon_set_restart_reason(PON_RESTART_REASON_RECOVERY);
+		__raw_writel(0x77665502, restart_reason);
 	}
 
 	mem = platform_get_resource_byname(pdev, IORESOURCE_MEM, "pshold-base");
