@@ -17,3 +17,4 @@ obj-$(CONFIG_QPNP_SMBLITE)		+= step-chg-jeita.o battery.o qpnp-smblite.o smblite
 obj-$(CONFIG_QPNP_VM_BMS)		+= qpnp-vm-bms.o batterydata-lib.o batterydata-interface.o
 obj-$(CONFIG_QPNP_LINEAR_CHARGER)	+= qpnp-linear-charger.o
 obj-$(CONFIG_ONEPLUS_FASTCHG)		+= op_dash_adapter.o oneplus_fastcg.o op_cg_uovp.o
+obj-$(CONFIG_MACH_ONEPLUS_MSM8998)	+= smb-lib-dash.o
