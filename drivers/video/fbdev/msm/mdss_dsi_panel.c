@@ -23,6 +23,10 @@
 #include "mdss_debug.h"
 #include "mdss_livedisplay.h"
 
+#ifdef CONFIG_FB_MSM_MDSS_FLICKER_FREE
+#include "flicker_free.h"
+#endif
+
 #define DT_CMD_HDR 6
 #define DEFAULT_MDP_TRANSFER_TIME 14000
 
