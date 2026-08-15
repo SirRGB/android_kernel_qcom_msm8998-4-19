@@ -1,0 +1,30 @@
+# OnePlus configuration options
+
+config MACH_ONEPLUS
+	bool "OnePlus board"
+	depends on ARCH_QCOM
+	help
+	 Support for OnePlus boards.
+
+config MACH_ONEPLUS_MSM8998
+	bool "OnePlus MSM8998 boards"
+	depends on ARCH_MSM8998
+	select MACH_ONEPLUS
+	help
+	 Support for MSM8998 OnePlus boards.
+
+menu "OnePlus board selection"
+
+config MACH_CHEESEBURGER
+	bool "cheeseburger board"
+	select MACH_ONEPLUS_MSM8998
+	help
+	 Support for OnePlus 5, codenamed cheeseburger.
+
+config MACH_DUMPLING
+	bool "dumpling board"
+	select MACH_ONEPLUS_MSM8998
+	help
+	 Support for OnePlus 5T, codenamed dumpling.
+
+endmenu
