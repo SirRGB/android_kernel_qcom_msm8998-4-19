@@ -23,6 +23,8 @@
 #include <linux/cpu_pm.h>
 #include <linux/platform_device.h>
 #include <linux/wait.h>
+#include <linux/completion.h>
+#include <linux/reboot.h>
 #include <soc/qcom/scm.h>
 #include <soc/qcom/memory_dump.h>
 #include <soc/qcom/minidump.h>
@@ -746,6 +748,73 @@ void msm_trigger_wdog_bite(void)
 		udelay(1);
 }
 
+#ifdef CONFIG_QCOM_WATCHDOG_GRACEFUL_BARK_RESTART
+/* extra window given to the graceful restart attempt before the raw
+ * hardware bite fires unattended as a fallback.
+ */
+#define GRACEFUL_BARK_RESTART_WINDOW_SEC 10
+
+static struct task_struct *graceful_restart_task;
+static struct completion graceful_restart_trigger;
+
+static int graceful_restart_kthread(void *arg)
+{
+	struct sched_param param = { .sched_priority = MAX_RT_PRIO - 1 };
+
+	sched_setscheduler(current, SCHED_FIFO, &param);
+
+	while (!kthread_should_stop()) {
+		wait_for_completion(&graceful_restart_trigger);
+		if (kthread_should_stop())
+			break;
+		reinit_completion(&graceful_restart_trigger);
+		pr_emerg("Attempting graceful restart before watchdog bite\n");
+		/*
+		 * Same PS_HOLD deassert path sysrq-b uses; skips all device
+		 * shutdown hooks entirely instead of waiting on them.
+		 */
+		emergency_restart();
+	}
+	return 0;
+}
+
+static void graceful_restart_init(struct msm_watchdog_data *wdog_dd)
+{
+	init_completion(&graceful_restart_trigger);
+	graceful_restart_task = kthread_run(graceful_restart_kthread, NULL,
+					"wdog_graceful_restart");
+	if (IS_ERR(graceful_restart_task)) {
+		dev_err(wdog_dd->dev,
+			"failed to start graceful restart thread\n");
+		graceful_restart_task = NULL;
+	}
+}
+
+static bool graceful_restart_attempt(struct msm_watchdog_data *wdog_dd)
+{
+	if (!graceful_restart_task)
+		return false;
+
+	__raw_writel(WDT_HZ * GRACEFUL_BARK_RESTART_WINDOW_SEC,
+			wdog_dd->base + WDT0_BITE_TIME);
+	__raw_writel(1, wdog_dd->base + WDT0_RST);
+	/* Make sure the extended deadline is armed before we hand off */
+	mb();
+
+	complete(&graceful_restart_trigger);
+	return true;
+}
+#else
+static inline void graceful_restart_init(struct msm_watchdog_data *wdog_dd)
+{
+}
+
+static inline bool graceful_restart_attempt(struct msm_watchdog_data *wdog_dd)
+{
+	return false;
+}
+#endif
+
 static irqreturn_t wdog_bark_handler(int irq, void *dev_id)
 {
 	struct msm_watchdog_data *wdog_dd = (struct msm_watchdog_data *)dev_id;
@@ -761,6 +830,9 @@ static irqreturn_t wdog_bark_handler(int irq, void *dev_id)
 			(unsigned long) wdog_dd->last_pet, nanosec_rem / 1000);
 	if (wdog_dd->do_ipi_ping)
 		dump_cpu_alive_mask(wdog_dd);
+
+	if (graceful_restart_attempt(wdog_dd))
+		return IRQ_HANDLED;
 
 	msm_trigger_wdog_bite();
 	return IRQ_HANDLED;
@@ -1040,6 +1112,7 @@ static int msm_watchdog_probe(struct platform_device *pdev)
 		goto err;
 	}
 	init_watchdog_data(wdog_dd);
+	graceful_restart_init(wdog_dd);
 
 	log_buf_init();
 

@@ -608,6 +608,19 @@ config QCOM_WATCHDOG_V2
 	  deadlocks. It does not run during the bootup process, so it will
 	  not catch any early lockups.
 
+config QCOM_WATCHDOG_GRACEFUL_BARK_RESTART
+	bool "Attempt a graceful restart before the watchdog bite"
+	depends on QCOM_WATCHDOG_V2
+	help
+	  On a watchdog bark, the raw hardware bite bypasses PS_HOLD
+	  deassert entirely, which the bootloader treats as an unexpected
+	  crash and falls back to EDL rather than a normal boot. This
+	  wakes a dedicated high-priority thread that attempts
+	  emergency_restart() (the same PS_HOLD deassert path sysrq-b
+	  uses) before the raw bite, extending the bite deadline as a
+	  fallback in case the attempt itself can't run. Experimental;
+	  say N unless you are diagnosing a watchdog-triggered EDL issue.
+
 config QCOM_INITIAL_LOGBUF
 	bool "QCOM save initial log_buf"
 	depends on QCOM_WATCHDOG_V2
