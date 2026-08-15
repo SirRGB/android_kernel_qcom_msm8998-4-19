@@ -1,0 +1,83 @@
+# We can build either as part of a standalone kernel build or as an
+# external module. Determine which mechanism is being used.
+ifeq ($(MODNAME),)
+	KERNEL_BUILD := 1
+else
+	KERNEL_BUILD := 0
+endif
+
+ifeq ($(KERNEL_BUILD), 1)
+	AUDIO_BLD_DIR := $(srctree)
+	AUDIO_ROOT := $(AUDIO_BLD_DIR)/techpack/audio
+endif
+
+ifeq ($(KERNEL_BUILD), 0)
+	ifeq ($(CONFIG_ARCH_MSM8998), y)
+		include $(AUDIO_ROOT)/config/msm8998auto.conf
+		export
+		INCS += -include $(AUDIO_ROOT)/config/msm8998autoconf.h
+	endif
+endif
+
+############ UAPI ############
+UAPI_DIR := uapi
+UAPI_INC := -I$(AUDIO_ROOT)/include/$(UAPI_DIR)
+
+############ COMMON ############
+COMMON_DIR := include
+COMMON_INC := -I$(AUDIO_ROOT)/$(COMMON_DIR)
+
+############ TFA98XX ############
+TFA98XX_OBJS += tfa98xx.o
+TFA98XX_OBJS += tfa_container.o
+TFA98XX_OBJS += tfa_dsp.o
+TFA98XX_OBJS += tfa9888_init.o
+TFA98XX_OBJS += tfa9891_init.o
+TFA98XX_OBJS += tfa9897_init.o
+TFA98XX_OBJS += tfa9890_init.o
+TFA98XX_OBJS += tfa9887B_init.o
+TFA98XX_OBJS += tfa9887_init.o
+
+ifdef TFA_DEBUG
+EXTRA_CFLAGS += -DTFA_DEBUG -DDEBUG
+TFA98XX_OBJS += tfa_debug.o
+endif
+
+LINUX_INC += -Iinclude/linux
+
+INCS += $(COMMON_INC) \
+	$(UAPI_INC)
+
+EXTRA_CFLAGS += $(INCS)
+
+CDEFINES += -DANI_LITTLE_BYTE_ENDIAN \
+	-DANI_LITTLE_BIT_ENDIAN \
+	-DDOT11F_LITTLE_ENDIAN_HOST \
+	-DANI_COMPILER_TYPE_GCC \
+	-DANI_OS_TYPE_ANDROID=6 \
+	-DPTT_SOCK_SVC_ENABLE \
+	-Wall \
+	-Werror \
+	-D__linux__
+
+KBUILD_CPPFLAGS += $(CDEFINES)
+
+ifeq ($(call cc-option-yn, -Wmaybe-uninitialized),y)
+EXTRA_CFLAGS += -Wmaybe-uninitialized
+endif
+
+ifeq ($(call cc-option-yn, -Wheader-guard),y)
+EXTRA_CFLAGS += -Wheader-guard
+endif
+
+ifeq ($(KERNEL_BUILD), 0)
+KBUILD_EXTRA_SYMBOLS += $(OUT)/obj/vendor/qcom/opensource/audio-kernel/ipc/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(OUT)/obj/vendor/qcom/opensource/audio-kernel/dsp/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(OUT)/obj/vendor/qcom/opensource/audio-kernel/soc/Module.symvers
+endif
+
+# Module information used by the Kbuild framework
+obj-$(CONFIG_SND_SOC_TFA98XX) += tfa98xx_dlkm.o
+tfa98xx_dlkm-y := $(TFA98XX_OBJS)

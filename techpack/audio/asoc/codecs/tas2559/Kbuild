@@ -1,0 +1,76 @@
+# We can build either as part of a standalone kernel build or as an
+# external module. Determine which mechanism is being used.
+ifeq ($(MODNAME),)
+	KERNEL_BUILD := 1
+else
+	KERNEL_BUILD := 0
+endif
+
+ifeq ($(KERNEL_BUILD), 1)
+	AUDIO_BLD_DIR := $(srctree)
+	AUDIO_ROOT := $(AUDIO_BLD_DIR)/techpack/audio
+endif
+
+ifeq ($(KERNEL_BUILD), 0)
+	ifeq ($(CONFIG_ARCH_MSM8998), y)
+		include $(AUDIO_ROOT)/config/msm8998auto.conf
+		export
+		INCS += -include $(AUDIO_ROOT)/config/msm8998autoconf.h
+	endif
+endif
+
+############ UAPI ############
+UAPI_DIR := uapi
+UAPI_INC := -I$(AUDIO_ROOT)/include/$(UAPI_DIR)
+
+############ COMMON ############
+COMMON_DIR := include
+COMMON_INC := -I$(AUDIO_ROOT)/$(COMMON_DIR)
+
+############ TAS2559 ############
+TAS2559_OBJS += tas2559-core.o
+TAS2559_OBJS += tas2559-regmap.o
+TAS2559_OBJS += tas2559-codec.o
+TAS2559_OBJS += tas2559-misc.o
+TAS2559_OBJS += tiload.o
+
+LINUX_INC += -Iinclude/linux
+
+INCS += $(COMMON_INC) \
+	$(UAPI_INC)
+
+EXTRA_CFLAGS += $(INCS)
+EXTRA_CFLAGS += -DCONFIG_TAS2559_CODEC
+EXTRA_CFLAGS += -DCONFIG_TAS2559_MISC
+
+CDEFINES += -DANI_LITTLE_BYTE_ENDIAN \
+	-DANI_LITTLE_BIT_ENDIAN \
+	-DDOT11F_LITTLE_ENDIAN_HOST \
+	-DANI_COMPILER_TYPE_GCC \
+	-DANI_OS_TYPE_ANDROID=6 \
+	-DPTT_SOCK_SVC_ENABLE \
+	-Wall \
+	-Werror \
+	-D__linux__
+
+KBUILD_CPPFLAGS += $(CDEFINES)
+
+ifeq ($(call cc-option-yn, -Wmaybe-uninitialized),y)
+EXTRA_CFLAGS += -Wmaybe-uninitialized
+endif
+
+ifeq ($(call cc-option-yn, -Wheader-guard),y)
+EXTRA_CFLAGS += -Wheader-guard
+endif
+
+ifeq ($(KERNEL_BUILD), 0)
+KBUILD_EXTRA_SYMBOLS += $(OUT)/obj/vendor/qcom/opensource/audio-kernel/ipc/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(OUT)/obj/vendor/qcom/opensource/audio-kernel/dsp/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(OUT)/obj/vendor/qcom/opensource/audio-kernel/soc/Module.symvers
+endif
+
+# Module information used by the Kbuild framework
+obj-$(CONFIG_SND_SOC_TAS2559) += tas2559_dlkm.o
+tas2559_dlkm-y := $(TAS2559_OBJS)

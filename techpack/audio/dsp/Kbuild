@@ -145,6 +145,14 @@ ifdef CONFIG_SND_SOC_MSM_QDSP6V2_INTF
 	Q6_OBJS += q6_init.o
 endif
 
+ifdef CONFIG_MACH_XIAOMI_MSM8998
+	ELLIPTIC_OBJS += apr_elliptic.o
+	ELLIPTIC_OBJS += elliptic/elliptic.o
+	ELLIPTIC_OBJS += elliptic/elliptic_sysfs.o
+	ELLIPTIC_OBJS += elliptic/elliptic_data_io.o
+	EXTRA_CFLAGS += -I$(AUDIO_ROOT)/include/drivers/elliptic
+endif
+
 ifdef CONFIG_SND_SOC_MSM_QDSP6V2_VM
 	Q6_OBJS += msm-audio-event-notify.o
 	Q6_OBJS += audio_calibration.o
@@ -277,3 +285,6 @@ q6_pdr_dlkm-y := $(QDSP6_PDR_OBJS)
 
 obj-$(CONFIG_MSM_QDSP6_NOTIFIER) += q6_notifier_dlkm.o
 q6_notifier_dlkm-y := $(QDSP6_NOTIFIER_OBJS)
+
+obj-$(CONFIG_MACH_XIAOMI_MSM8998) += elliptic_dlkm.o
+elliptic_dlkm-y := $(ELLIPTIC_OBJS)
