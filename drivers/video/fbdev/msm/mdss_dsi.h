@@ -577,6 +577,7 @@ struct mdss_dsi_ctrl_pdata {
 	struct dsi_err_container err_cont;
 
 	struct mutex panel_mode_lock;
+	bool high_brightness_panel;
 
 	struct kobject *kobj;
 	int fb_node;
