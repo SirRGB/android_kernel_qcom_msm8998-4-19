@@ -161,6 +161,7 @@ struct clk_rcg2 {
 #define HW_CLK_CTRL_MODE	BIT(1)
 #define RCG_UPDATE_BEFORE_PLL	BIT(2)
 #define FORCE_UPDATE_RCG	BIT(3)
+#define RECONFIGURE_RCG		BIT(4)
 };
 
 #define to_clk_rcg2(_hw) container_of(to_clk_regmap(_hw), struct clk_rcg2, clkr)
