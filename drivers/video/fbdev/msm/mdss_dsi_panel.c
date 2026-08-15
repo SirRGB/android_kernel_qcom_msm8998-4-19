@@ -905,6 +905,17 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
 
+#ifdef CONFIG_FB_MSM_MDSS_FLICKER_FREE
+	/* Remap backlight value prior to HBM */
+	if (bl_level != 0)
+		bl_level = mdss_panel_calc_backlight(bl_level);
+#endif
+
+	/* Enable HBM if bl_level is >= 80% of bklt_max */
+	if (pdata->event_handler)
+		pdata->event_handler(pdata, MDSS_EVENT_PANEL_SET_HBM_MODE_ALLOWED,
+				(void *)(unsigned long) (bl_level >= ((ctrl_pdata->bklt_max * 4) / 5)));
+
 	/*
 	 * Some backlight controllers specify a minimum duty cycle
 	 * for the backlight brightness. If the brightness is less
@@ -3071,6 +3082,7 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	pr_debug("%s: esc clk %d\n", __func__, pinfo->esc_clk_rate_hz);
 
 	mdss_livedisplay_parse_dt(np, pinfo);
+	mutex_init(&ctrl_pdata->panel_mode_lock);
 
 	return 0;
 
