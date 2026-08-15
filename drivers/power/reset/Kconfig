@@ -149,6 +149,16 @@ config POWER_RESET_QCOM
 	  Say Y here if you have a Qualcomm Tecnologies, Inc. board and wish to
 	  enable restart driver.
 
+config POWER_RESET_QCOM_DLOAD_DEFAULT_DISABLED
+	bool "Disable DLOAD/EDL mode by default on panic"
+	depends on POWER_RESET_QCOM
+	help
+	  Normally any kernel panic sets the DLOAD cookie so the bootloader
+	  drops into EDL for a RAM dump via QPST/Firehose. This defaults the
+	  download_mode killswitch to off instead, so a panic restarts
+	  normally and can be captured through dmesg/pstore. Say N unless
+	  you specifically want panics to stay out of EDL.
+
 config POWER_RESET_QNAP
 	bool "QNAP power-off driver"
 	depends on OF_GPIO && PLAT_ORION
