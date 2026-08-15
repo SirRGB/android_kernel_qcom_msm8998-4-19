@@ -17,6 +17,9 @@
 #include <linux/qpnp/qpnp-misc.h>
 #include "fg-core.h"
 #include "fg-reg.h"
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+#include <linux/power/oem_external_fg.h>
+#endif
 
 #define FG_GEN3_DEV_NAME	"qcom,fg-gen3"
 
@@ -167,6 +170,9 @@ struct fg_dt_props {
 	bool    use_esr_sw;
 	bool	disable_esr_pull_dn;
 	bool    disable_fg_twm;
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	bool	use_external_fg;
+#endif
 	int	cutoff_volt_mv;
 	int	empty_volt_mv;
 	int	vbatt_low_thr_mv;
@@ -464,6 +470,29 @@ static struct fg_alg_flag pmi8998_v2_alg_flags[] = {
 };
 
 static int fg_gen3_debug_mask;
+
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+static struct external_battery_gauge *external_fg;
+
+void external_battery_gauge_register(struct external_battery_gauge *batt_gauge)
+{
+	if (external_fg) {
+		external_fg = batt_gauge;
+		pr_err("qpnp-charger %s multiple battery gauge called\n",
+								__func__);
+	} else {
+		external_fg = batt_gauge;
+	}
+}
+EXPORT_SYMBOL(external_battery_gauge_register);
+
+void external_battery_gauge_unregister(
+	struct external_battery_gauge *batt_gauge)
+{
+	external_fg = NULL;
+}
+EXPORT_SYMBOL(external_battery_gauge_unregister);
+#endif
 
 static bool fg_profile_dump;
 static ssize_t profile_dump_show(struct device *dev, struct device_attribute
@@ -3647,7 +3676,13 @@ static int fg_psy_get_property(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_CAPACITY:
-		rc = fg_get_prop_capacity(fg, &pval->intval);
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+		if (chip->dt.use_external_fg && external_fg
+				&& external_fg->get_battery_soc)
+			pval->intval = external_fg->get_battery_soc();
+		else
+#endif
+			rc = fg_get_prop_capacity(fg, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_REAL_CAPACITY:
 		rc = fg_get_prop_real_capacity(fg, &pval->intval);
@@ -3656,16 +3691,43 @@ static int fg_psy_get_property(struct power_supply *psy,
 		rc = fg_get_msoc_raw(fg, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+		if (chip->dt.use_external_fg && external_fg
+				&& external_fg->get_battery_mvolts)
+			pval->intval = external_fg->get_battery_mvolts();
+		else
+#endif
 		if (fg->battery_missing)
 			pval->intval = 3700000;
 		else
 			rc = fg_get_battery_voltage(fg, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+		if (chip->dt.use_external_fg && external_fg
+				&& external_fg->get_average_current)
+			pval->intval = external_fg->get_average_current();
+		else
+#endif
+			rc = fg_get_battery_current(fg, &pval->intval);
+		break;
+	case POWER_SUPPLY_PROP_FG_VOLTAGE_NOW:
+		if (fg->battery_missing)
+			pval->intval = 3700000;
+		else
+			rc = fg_get_battery_voltage(fg, &pval->intval);
+		break;
+	case POWER_SUPPLY_PROP_FG_CURRENT_NOW:
 		rc = fg_get_battery_current(fg, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
-		rc = fg_get_battery_temp(fg, &pval->intval);
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+		if (chip->dt.use_external_fg && external_fg
+				&& external_fg->get_battery_temperature)
+			pval->intval = external_fg->get_battery_temperature();
+		else
+#endif
+			rc = fg_get_battery_temp(fg, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_COLD_TEMP:
 		rc = fg_get_jeita_threshold(fg, JEITA_COLD, &pval->intval);
@@ -5113,6 +5175,12 @@ static int fg_parse_dt(struct fg_gen3_chip *chip)
 		chip->dt.rsense_sel = SRC_SEL_BATFET_SMB;
 	else
 		chip->dt.rsense_sel = (u8)temp & SOURCE_SELECT_MASK;
+
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	chip->dt.use_external_fg =
+		of_property_read_bool(node, "oem,use_external_fg");
+	pr_info("use_external_fg=%d\n", chip->dt.use_external_fg);
+#endif
 
 	chip->dt.jeita_thresholds[JEITA_COLD] = DEFAULT_BATT_TEMP_COLD;
 	chip->dt.jeita_thresholds[JEITA_COOL] = DEFAULT_BATT_TEMP_COOL;
