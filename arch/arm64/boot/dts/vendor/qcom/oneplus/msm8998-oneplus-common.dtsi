@@ -218,10 +218,35 @@
 	};
 };
 
+/* Storage */
+&ufsphy1 {
+	vdda-phy-supply = <&pm8998_l1>;
+	vdda-pll-supply = <&pm8998_l2>;
+	vddp-ref-clk-supply = <&pm8998_l26>;
+	vdda-phy-max-microamp = <51400>;
+	vdda-pll-max-microamp = <14600>;
+	vddp-ref-clk-max-microamp = <100>;
+	vddp-ref-clk-always-on;
+	status = "okay";
+};
+
+&ufs1 {
+	vdd-hba-supply = <&gdsc_ufs>;
+	vdd-hba-fixed-regulator;
+	vcc-supply = <&pm8998_l20>;
+	vccq-supply = <&pm8998_l26>;
+	vccq2-supply = <&pm8998_s4>;
+	vcc-max-microamp = <750000>;
+	vccq-max-microamp = <560000>;
+	vccq2-max-microamp = <750000>;
+	status = "okay";
+};
+
 &sdhc_2 {
 	status = "disabled";
 };
 
+/* Haptics */
 &pmi8998_haptics {
 	status = "okay";
 	qcom,wave-shape = "sine";
@@ -457,7 +482,8 @@
 
 /* Display */
 &i2c_5 {
-	/delete-node/ synaptics@20;
+	status = "okay";
+	qcom,disable-dma;
 
 	synaptics-rmi-ts@20 {
 		status = "disabled";
@@ -732,7 +758,7 @@
 };
 
 &i2c_6 { /* BLSP1 QUP6 (NFC) */
-	/delete-node/ nq@28;
+	status = "okay";
 
 	pn5xx@28 {
 		compatible = "nxp,pn547";
@@ -757,6 +783,7 @@
 };
 
 &uartblsp2dm1 {
+	status = "disabled";
 	pinctrl-names = "uart_active", "uart_deactive";
 	pinctrl-0 = <&uart_console_active>;
 	pinctrl-1 = <&uart_console_deactive>;
