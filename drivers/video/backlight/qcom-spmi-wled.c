@@ -10,6 +10,7 @@
 
 #include <linux/delay.h>
 #include <linux/interrupt.h>
+#include <linux/irq.h>
 #include <linux/ktime.h>
 #include <linux/kernel.h>
 #include <linux/backlight.h>
@@ -247,6 +248,7 @@ struct wled {
 	int pre_flash_irq;
 	bool prev_state;
 	bool ovp_irq_disabled;
+	bool ovp_irq_requested;
 	bool auto_calib_done;
 	bool force_mod_disable;
 	bool cabc_disabled;
@@ -292,6 +294,11 @@ static inline bool is_wled4(struct wled *wled)
 		return true;
 
 	return false;
+}
+
+static inline bool is_pmi8998_wled(struct wled *wled)
+{
+	return *wled->version == WLED_PMI8998;
 }
 
 static inline bool is_wled5(struct wled *wled)
@@ -342,14 +349,17 @@ static int wled_module_enable(struct wled *wled, int val)
 		usleep_range(WLED_SOFT_START_DLY_US,
 				WLED_SOFT_START_DLY_US + 1000);
 
-		if (wled->ovp_irq > 0 && wled->ovp_irq_disabled) {
-			enable_irq(wled->ovp_irq);
+		if (wled->ovp_irq_requested && wled->ovp_irq_disabled) {
 			wled->ovp_irq_disabled = false;
+			enable_irq(wled->ovp_irq);
 		}
 	} else {
-		if (wled->ovp_irq > 0 && !wled->ovp_irq_disabled) {
-			disable_irq(wled->ovp_irq);
+		if (wled->ovp_irq_requested && !wled->ovp_irq_disabled) {
 			wled->ovp_irq_disabled = true;
+			if (is_pmi8998_wled(wled))
+				disable_irq_nosync(wled->ovp_irq);
+			else
+				disable_irq(wled->ovp_irq);
 		}
 	}
 
@@ -1036,6 +1046,19 @@ static void handle_ovp_fault(struct wled *wled)
 	mutex_unlock(&wled->lock);
 }
 
+static void wled_disable_pmi8998_ovp_irq(struct wled *wled)
+{
+	if (!is_pmi8998_wled(wled) || wled->cfg.auto_calib_enabled)
+		return;
+
+	mutex_lock(&wled->lock);
+	if (wled->ovp_irq_requested && !wled->ovp_irq_disabled) {
+		wled->ovp_irq_disabled = true;
+		disable_irq_nosync(wled->ovp_irq);
+	}
+	mutex_unlock(&wled->lock);
+}
+
 static irqreturn_t wled_ovp_irq_handler(int irq, void *_wled)
 {
 	struct wled *wled = _wled;
@@ -1045,12 +1068,14 @@ static irqreturn_t wled_ovp_irq_handler(int irq, void *_wled)
 	rc = wled_get_ovp_fault_status(wled, &fault_set);
 	if (rc < 0) {
 		pr_err("Error in getting OVP fault_sts, rc=%d\n", rc);
-		return rc;
+		goto out;
 	}
 
 	if (fault_set)
 		handle_ovp_fault(wled);
 
+out:
+	wled_disable_pmi8998_ovp_irq(wled);
 	return IRQ_HANDLED;
 }
 
@@ -1199,6 +1224,7 @@ static int wled5_setup(struct wled *wled)
 				wled->ovp_irq, rc);
 			return rc;
 		}
+		wled->ovp_irq_requested = true;
 
 		rc = regmap_read(wled->regmap, wled->ctrl_addr +
 				WLED_CTRL_MOD_ENABLE, &val);
@@ -1230,12 +1256,116 @@ static int wled5_setup(struct wled *wled)
 	return 0;
 }
 
+static u8 wled4_sink_enable_mask(u8 string_cfg)
+{
+	u8 sink_en = 0;
+	int i;
+
+	for (i = 0; (string_cfg >> i) != 0; i++) {
+		if (string_cfg & BIT(i))
+			sink_en |= BIT(i + WLED_SINK_CURR_SINK_SHFT);
+	}
+
+	return sink_en;
+}
+
+static int wled4_prepare_handoff(struct wled *wled, u8 sink_en,
+				 bool *handoff, bool *module_enabled)
+{
+	u32 val;
+	int rc;
+
+	*handoff = false;
+	*module_enabled = false;
+	if (!is_pmi8998_wled(wled))
+		return 0;
+
+	rc = regmap_read(wled->regmap, wled->ctrl_addr +
+			 WLED_CTRL_MOD_ENABLE, &val);
+	if (rc < 0)
+		return rc;
+	if (!(val & WLED_CTRL_MOD_EN_MASK))
+		return 0;
+
+	*module_enabled = true;
+	rc = regmap_read(wled->regmap, wled->sink_addr +
+			 WLED_SINK_CURR_SINK_EN, &val);
+	if (rc < 0)
+		return rc;
+
+	if ((val & WLED_SINK_CURR_SINK_MASK) == sink_en) {
+		wled->prev_state = true;
+		*handoff = true;
+		return 0;
+	}
+
+	rc = regmap_update_bits(wled->regmap, wled->ctrl_addr +
+				WLED_CTRL_MOD_ENABLE, WLED_CTRL_MOD_EN_MASK, 0);
+	if (rc < 0)
+		return rc;
+
+	return regmap_update_bits(wled->regmap, wled->sink_addr +
+				  WLED_SINK_CURR_SINK_EN,
+				  WLED_SINK_CURR_SINK_MASK, 0);
+}
+
+static int wled4_request_ovp_irq(struct wled *wled, bool module_enabled)
+{
+	bool no_auto_enable = is_pmi8998_wled(wled);
+	u32 val;
+	int rc;
+
+	if (wled->ovp_irq < 0)
+		return 0;
+
+	if (no_auto_enable) {
+		irq_set_status_flags(wled->ovp_irq, IRQ_NOAUTOEN);
+		wled->ovp_irq_disabled = true;
+	}
+
+	rc = devm_request_threaded_irq(&wled->pdev->dev, wled->ovp_irq,
+			NULL, wled_ovp_irq_handler, IRQF_ONESHOT,
+			"wled_ovp_irq", wled);
+	if (rc < 0) {
+		pr_err("Unable to request ovp(%d) IRQ(err:%d)\n",
+			wled->ovp_irq, rc);
+		return rc;
+	}
+	wled->ovp_irq_requested = true;
+
+	if (no_auto_enable) {
+		if (module_enabled) {
+			usleep_range(WLED_SOFT_START_DLY_US,
+				     WLED_SOFT_START_DLY_US + 1000);
+			wled->ovp_irq_disabled = false;
+			enable_irq(wled->ovp_irq);
+		}
+		return 0;
+	}
+
+	rc = regmap_read(wled->regmap, wled->ctrl_addr +
+			 WLED_CTRL_MOD_ENABLE, &val);
+	if (!rc && !(val & WLED_CTRL_MOD_EN_MASK)) {
+		disable_irq(wled->ovp_irq);
+		wled->ovp_irq_disabled = true;
+	}
+
+	return 0;
+}
+
 static int wled4_setup(struct wled *wled)
 {
-	int rc, temp, i;
-	u8 sink_en = 0;
-	u32 val;
+	bool handoff, module_enabled;
 	u8 string_cfg = wled->cfg.string_cfg;
+	u8 sink_en = wled4_sink_enable_mask(string_cfg);
+	int rc, i;
+
+	rc = wled4_prepare_handoff(wled, sink_en, &handoff,
+				   &module_enabled);
+	if (rc < 0)
+		return rc;
+	if (handoff)
+		goto configure_protection;
 
 	rc = regmap_update_bits(wled->regmap,
 			wled->ctrl_addr + WLED_CTRL_OVP,
@@ -1299,8 +1429,6 @@ static int wled4_setup(struct wled *wled)
 			if (rc < 0)
 				return rc;
 
-			temp = i + WLED_SINK_CURR_SINK_SHFT;
-			sink_en |= 1 << temp;
 		}
 	}
 
@@ -1319,10 +1447,22 @@ static int wled4_setup(struct wled *wled)
 		return rc;
 	}
 
+	if (module_enabled) {
+		rc = regmap_update_bits(wled->regmap, wled->ctrl_addr +
+				WLED_CTRL_MOD_ENABLE, WLED_CTRL_MOD_EN_MASK,
+				WLED_CTRL_MOD_EN_MASK);
+		if (rc < 0)
+			return rc;
+		usleep_range(WLED_SOFT_START_DLY_US,
+			     WLED_SOFT_START_DLY_US + 1000);
+		wled->prev_state = true;
+	}
+
 	rc = wled_auto_calibrate_at_init(wled);
 	if (rc < 0)
 		return rc;
 
+configure_protection:
 	if (wled->sc_irq >= 0) {
 		rc = devm_request_threaded_irq(&wled->pdev->dev, wled->sc_irq,
 				NULL, wled_sc_irq_handler, IRQF_ONESHOT,
@@ -1356,26 +1496,7 @@ static int wled4_setup(struct wled *wled)
 			return rc;
 	}
 
-	if (wled->ovp_irq >= 0) {
-		rc = devm_request_threaded_irq(&wled->pdev->dev, wled->ovp_irq,
-				NULL, wled_ovp_irq_handler, IRQF_ONESHOT,
-				"wled_ovp_irq", wled);
-		if (rc < 0) {
-			pr_err("Unable to request ovp(%d) IRQ(err:%d)\n",
-				wled->ovp_irq, rc);
-			return rc;
-		}
-
-		rc = regmap_read(wled->regmap, wled->ctrl_addr +
-				WLED_CTRL_MOD_ENABLE, &val);
-		/* disable the OVP irq only if the module is not enabled */
-		if (!rc && !(val & WLED_CTRL_MOD_EN_MASK)) {
-			disable_irq(wled->ovp_irq);
-			wled->ovp_irq_disabled = true;
-		}
-	}
-
-	return 0;
+	return wled4_request_ovp_irq(wled, module_enabled);
 }
 
 static const struct wled_config wled4_config_defaults = {
