@@ -2998,6 +2998,11 @@
 			compatible = "qcom,msm-imem-diag-dload";
 			reg = <0xc8 200>;
 		};
+
+		ss_mdump@b88 {
+			compatible = "qcom,msm-imem-minidump";
+			reg = <0xb88 28>;
+		};
 	};
 
 	cpu_pmu: cpu-pmu {
