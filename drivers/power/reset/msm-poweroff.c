@@ -467,6 +467,7 @@ static void halt_spmi_pmic_arbiter(void)
 static void msm_restart_prepare(const char *cmd)
 {
 	bool need_warm_reset = false;
+	bool force_hard_reset;
 	/* Write download mode flags if we're panic'ing
 	 * Write download mode flags if restart_mode says so
 	 * Kill download mode if master-kill switch is set
@@ -486,11 +487,18 @@ static void msm_restart_prepare(const char *cmd)
 				(cmd != NULL && cmd[0] != '\0'));
 	}
 
-	if (force_warm_reboot)
+	/*
+	 * MSM8998 OnePlus warm resets enter EDL while a hard reset boots
+	 * normally. Keep the explicitly requested EDL and panic paths warm.
+	 */
+	force_hard_reset = !in_panic &&
+		!(cmd != NULL && !strncmp(cmd, "edl", 3));
+
+	if (!force_hard_reset && force_warm_reboot)
 		pr_info("Forcing a warm reset of the system\n");
 
 	/* Hard reset the PMIC unless memory contents must be maintained. */
-	if (force_warm_reboot || need_warm_reset)
+	if (!force_hard_reset && (force_warm_reboot || need_warm_reset))
 		qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
 	else
 		qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
