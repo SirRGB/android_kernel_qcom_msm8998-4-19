@@ -651,6 +651,15 @@ static int msm_restart_probe(struct platform_device *pdev)
 	force_warm_reboot = of_property_read_bool(dev->of_node,
 						"qcom,force-warm-reboot");
 
+	/*
+	 * The working 4.14 OnePlus restart driver programs the PMIC PON
+	 * action for warm reset when the restart driver probes. Keep that
+	 * ordering for this diagnostic; msm_restart_prepare() will program
+	 * the same action again immediately before PS_HOLD is dropped.
+	 */
+	if (force_warm_reboot)
+		qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
+
 	return 0;
 
 err_restart_reason:
