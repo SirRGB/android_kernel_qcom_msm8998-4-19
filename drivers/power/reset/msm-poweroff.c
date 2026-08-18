@@ -71,6 +71,7 @@ static void *dload_mode_addr;
 static bool dload_mode_enabled;
 static void *emergency_dload_mode_addr;
 static bool scm_dload_supported;
+static bool legacy_dload_mode;
 
 static bool force_warm_reboot;
 
@@ -151,6 +152,13 @@ int scm_set_dload_mode(int arg1, int arg2)
 		.arginfo = SCM_ARGS(2),
 	};
 
+	if (legacy_dload_mode) {
+		if (tcsr_boot_misc_detect)
+			return scm_io_write(tcsr_boot_misc_detect, 0);
+
+		return 0;
+	}
+
 	if (!scm_dload_supported) {
 		if (tcsr_boot_misc_detect)
 			return scm_io_write(tcsr_boot_misc_detect, arg1);
@@ -165,6 +173,12 @@ int scm_set_dload_mode(int arg1, int arg2)
 static void set_dload_mode(int on)
 {
 	int ret;
+
+	if (legacy_dload_mode) {
+		scm_set_dload_mode(0, 0);
+		dload_mode_enabled = false;
+		return;
+	}
 
 	if (dload_mode_addr) {
 		__raw_writel(on ? 0xE47B337D : 0, dload_mode_addr);
@@ -189,6 +203,11 @@ static bool get_dload_mode(void)
 static void enable_emergency_dload_mode(void)
 {
 	int ret;
+
+	if (legacy_dload_mode) {
+		pr_err("dload mode is not enabled on this target\n");
+		return;
+	}
 
 	if (emergency_dload_mode_addr) {
 		__raw_writel(EMERGENCY_DLOAD_MAGIC1,
@@ -284,10 +303,13 @@ static void setup_dload_mode_support(void)
 {
 	int ret;
 
+	atomic_notifier_chain_register(&panic_notifier_list, &panic_blk);
+
+	if (legacy_dload_mode)
+		return;
+
 	if (scm_is_call_available(SCM_SVC_BOOT, SCM_DLOAD_CMD) > 0)
 		scm_dload_supported = true;
-
-	atomic_notifier_chain_register(&panic_notifier_list, &panic_blk);
 
 	dload_mode_addr = map_prop_mem(DL_MODE_PROP);
 
@@ -609,6 +631,10 @@ static int msm_restart_probe(struct platform_device *pdev)
 	struct resource *mem;
 	struct device_node *np;
 	int ret = 0;
+
+	legacy_dload_mode = of_machine_is_compatible("qcom,msm8998");
+	if (legacy_dload_mode)
+		download_mode = 0;
 
 	setup_dload_mode_support();
 
