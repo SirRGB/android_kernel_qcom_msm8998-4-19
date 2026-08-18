@@ -1156,22 +1156,6 @@ static void mdss_fb_remove_sysfs(struct msm_fb_data_type *mfd)
 	sysfs_remove_group(&mfd->fbi->dev->kobj, &mdss_fb_attr_group);
 }
 
-static void mdss_fb_shutdown(struct platform_device *pdev)
-{
-	struct msm_fb_data_type *mfd = platform_get_drvdata(pdev);
-
-	mfd->shutdown_pending = true;
-
-	/* wake up threads waiting on idle or kickoff queues */
-	wake_up_all(&mfd->idle_wait_q);
-	wake_up_all(&mfd->kickoff_wait_q);
-
-	lock_fb_info(mfd->fbi);
-	mdss_fb_release_all(mfd->fbi, true);
-	sysfs_notify(&mfd->fbi->dev->kobj, NULL, "show_blank_event");
-	unlock_fb_info(mfd->fbi);
-}
-
 static void mdss_fb_input_event_handler(struct input_handle *handle,
 				    unsigned int type,
 				    unsigned int code,
@@ -1871,7 +1855,7 @@ static struct platform_driver mdss_fb_driver = {
 	.remove = mdss_fb_remove,
 	.suspend = mdss_fb_suspend,
 	.resume = mdss_fb_resume,
-	.shutdown = mdss_fb_shutdown,
+	.shutdown = NULL,
 	.driver = {
 		.name = "mdss_fb",
 		.of_match_table = mdss_fb_dt_match,
