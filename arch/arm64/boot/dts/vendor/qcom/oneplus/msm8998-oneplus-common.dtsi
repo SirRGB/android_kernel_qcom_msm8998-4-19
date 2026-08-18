@@ -284,11 +284,12 @@
 			qcom,kpdpwr-sw-debounce;
 
 			/*
-			 * Reset PMIC digital state for a Linux warm reboot while
-			 * retaining the normal warm-reset policy and system rails.
+			 * Diagnostic: retain the logical warm-reboot policy but
+			 * request an ordinary PMIC hard reset to test ramoops
+			 * retention.
 			 */
 			qcom,warm-reset-poweroff-type =
-				<PON_POWER_OFF_TYPE_DVDD_HARD_RESET>;
+				<PON_POWER_OFF_TYPE_HARD_RESET>;
 		};
 	};
 
