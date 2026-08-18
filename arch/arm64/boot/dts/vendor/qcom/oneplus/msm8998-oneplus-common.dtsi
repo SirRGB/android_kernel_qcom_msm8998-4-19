@@ -788,9 +788,3 @@
 	pinctrl-0 = <&uart_console_active>;
 	pinctrl-1 = <&uart_console_deactive>;
 };
-
-&soc {
-	restart@10ac000 {
-		qcom,force-warm-reboot;
-	};
-};
