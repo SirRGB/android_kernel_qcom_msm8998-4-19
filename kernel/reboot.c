@@ -68,7 +68,7 @@ EXPORT_SYMBOL_GPL(emergency_restart);
 
 void kernel_restart_prepare(char *cmd)
 {
-	blocking_notifier_call_chain(&reboot_notifier_list, SYS_RESTART, cmd);
+	/* Diagnostic: isolate reboot notifiers from the warm-reset failure. */
 	system_state = SYSTEM_RESTART;
 	usermodehelper_disable();
 	device_shutdown();
