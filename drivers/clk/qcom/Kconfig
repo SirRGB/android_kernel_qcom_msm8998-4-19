@@ -231,11 +231,28 @@ config MSM_MMCC_8996
 
 config MSM_GCC_8998
 	tristate "MSM8998 Global Clock Controller"
+	select QCOM_GDSC
 	depends on COMMON_CLK_QCOM
 	help
 	  Support for the global clock controller on msm8998 devices.
 	  Say Y if you want to use peripheral devices such as UART, SPI,
 	  i2c, USB, UFS, SD/eMMC, PCIe, etc.
+
+config MSM_GPUCC_8998
+	tristate "MSM8998 Graphics Clock Controller"
+	select MSM_GCC_8998
+	select QCOM_GDSC
+	depends on COMMON_CLK_QCOM
+	help
+	  Support for the graphics clock controller on MSM8998 platforms.
+
+config MSM_MMCC_8998
+	tristate "MSM8998 Multimedia Clock Controller"
+	select MSM_GCC_8998
+	select QCOM_GDSC
+	depends on COMMON_CLK_QCOM
+	help
+	  Support for the multimedia clock controller on MSM8998 platforms.
 
 config SDM_GCC_845
 	tristate "SDM845 Global Clock Controller"
@@ -574,10 +591,10 @@ config SDM_MMCC_660
 	  video encode/decode, camera, etc.
 
 config CLOCK_CPU_OSM_660
-	tristate "OSM CPU Clock Controller for SDM660"
+	tristate "OSM CPU Clock Controller for SDM660 and MSM8998"
 	depends on COMMON_CLK_QCOM
 	help
-	 Support for the OSM clock controller for SDM660.
+	 Support for the OSM clock controller for SDM660 and MSM8998.
 	 Operating State Manager (OSM) is a hardware engine used by some
 	 Qualcomm Technologies, Inc. (QTI) SoCs to manage frequency and
 	 voltage scaling in hardware. OSM is capable of controlling
