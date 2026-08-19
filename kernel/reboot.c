@@ -243,7 +243,7 @@ void kernel_restart(char *cmd)
 {
 	kernel_restart_prepare(cmd);
 	migrate_to_reboot_cpu();
-	syscore_shutdown();
+	/* Diagnostic: isolate syscore shutdown from the warm-reset failure. */
 	if (!cmd)
 		pr_emerg("Restarting system\n");
 	else
