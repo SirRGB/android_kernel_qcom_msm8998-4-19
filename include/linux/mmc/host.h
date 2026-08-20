@@ -641,6 +641,7 @@ struct mmc_host {
 	bool crash_on_err;	/* crash the system on error */
 	bool need_hw_reset;
 	atomic_t active_reqs;
+	bool sdr104_wa;
 	unsigned long		private[0] ____cacheline_aligned;
 };
 
