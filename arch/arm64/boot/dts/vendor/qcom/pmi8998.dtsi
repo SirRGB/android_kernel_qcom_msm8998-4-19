@@ -699,13 +699,37 @@
 		wake-capable-sensor;
 
 		trips {
-			ibat_high: low-ibat {
-				temperature = <5000>;
-				hysteresis = <200>;
+			ibat_high: ibat-high {
+				temperature = <4200>;
+				hysteresis = <800>;
 				type = "passive";
 			};
 		};
+
+		cooling-maps {
+			ibat_freq {
+				trip = <&ibat_high>;
+				cooling-device =
+					<&CPU4 THERMAL_MAX_LIMIT
+						THERMAL_MAX_LIMIT>;
+			};
+
+			ibat_map6 {
+				trip = <&ibat_high>;
+				cooling-device =
+					<&cpu6_isolate THERMAL_MAX_LIMIT
+						THERMAL_MAX_LIMIT>;
+			};
+
+			ibat_map7 {
+				trip = <&ibat_high>;
+				cooling-device =
+					<&cpu7_isolate THERMAL_MAX_LIMIT
+						THERMAL_MAX_LIMIT>;
+			};
+		};
 	};
+
 	ibat-vhigh {
 		polling-delay-passive = <0>;
 		polling-delay = <0>;
@@ -714,14 +738,14 @@
 		wake-capable-sensor;
 
 		trips {
-			ibat_vhigh: ibat_vhigh {
-				temperature = <6000>;
+			ibat_vhigh: ibat-vhigh {
+				temperature = <4300>;
 				hysteresis = <100>;
 				type = "passive";
 			};
 		};
 	};
-	vbat {
+	vbat-adc {
 		polling-delay-passive = <100>;
 		polling-delay = <0>;
 		thermal-governor = "low_limits_cap";
@@ -730,35 +754,43 @@
 		tracks-low;
 
 		trips {
-			low_vbat: low-vbat {
-				temperature = <3200>;
-				hysteresis = <100>;
+			low_vbat: vbat-adc {
+				temperature = <3300>;
+				hysteresis = <200>;
 				type = "passive";
 			};
 		};
 		cooling-maps {
-			vbat_cpu4 {
+			vbat_freq {
 				trip = <&low_vbat>;
 				cooling-device =
 					<&CPU4 THERMAL_MAX_LIMIT
 						THERMAL_MAX_LIMIT>;
 			};
-			vbat_cpu5 {
+			vbat_map4 {
 				trip = <&low_vbat>;
 				cooling-device =
-					<&CPU5 THERMAL_MAX_LIMIT
+					<&cpu4_isolate THERMAL_MAX_LIMIT
 						THERMAL_MAX_LIMIT>;
 			};
+
+			vbat_map5 {
+				trip = <&low_vbat>;
+				cooling-device =
+					<&cpu5_isolate THERMAL_MAX_LIMIT
+						THERMAL_MAX_LIMIT>;
+			};
+
 			vbat_map6 {
 				trip = <&low_vbat>;
 				cooling-device =
-					<&CPU6 THERMAL_MAX_LIMIT
+					<&cpu6_isolate THERMAL_MAX_LIMIT
 						THERMAL_MAX_LIMIT>;
 			};
 			vbat_map7 {
 				trip = <&low_vbat>;
 				cooling-device =
-					<&CPU7 THERMAL_MAX_LIMIT
+					<&cpu7_isolate THERMAL_MAX_LIMIT
 						THERMAL_MAX_LIMIT>;
 			};
 		};
@@ -773,7 +805,7 @@
 
 		trips {
 			low-vbat {
-				temperature = <2800>;
+				temperature = <3100>;
 				hysteresis = <0>;
 				type = "passive";
 			};
@@ -789,7 +821,7 @@
 
 		trips {
 			low-vbat {
-				temperature = <2600>;
+				temperature = <2900>;
 				hysteresis = <0>;
 				type = "passive";
 			};
@@ -811,28 +843,36 @@
 			};
 		};
 		cooling-maps {
-			soc_cpu4 {
+			soc_freq {
 				trip = <&low_soc>;
 				cooling-device =
 					<&CPU4 THERMAL_MAX_LIMIT
 						THERMAL_MAX_LIMIT>;
 			};
-			soc_cpu5 {
+			soc_map4 {
 				trip = <&low_soc>;
 				cooling-device =
-					<&CPU5 THERMAL_MAX_LIMIT
+					<&cpu4_isolate THERMAL_MAX_LIMIT
 						THERMAL_MAX_LIMIT>;
 			};
+
+			soc_map5 {
+				trip = <&low_soc>;
+				cooling-device =
+					<&cpu5_isolate THERMAL_MAX_LIMIT
+						THERMAL_MAX_LIMIT>;
+			};
+
 			soc_map6 {
 				trip = <&low_soc>;
 				cooling-device =
-					<&CPU6 THERMAL_MAX_LIMIT
+					<&cpu6_isolate THERMAL_MAX_LIMIT
 						THERMAL_MAX_LIMIT>;
 			};
 			soc_map7 {
 				trip = <&low_soc>;
 				cooling-device =
-					<&CPU7 THERMAL_MAX_LIMIT
+					<&cpu7_isolate THERMAL_MAX_LIMIT
 						THERMAL_MAX_LIMIT>;
 			};
 		};
