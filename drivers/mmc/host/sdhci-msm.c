@@ -2392,6 +2392,7 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 
 	msm_host->regs_restore.is_supported =
 		of_property_read_bool(np, "qcom,restore-after-cx-collapse");
+	pdata->sdr104_wa = of_property_read_bool(np, "qcom,sdr104-wa");
 
 	if (sdhci_msm_dt_parse_hsr_info(dev, msm_host))
 		goto out;
@@ -5714,6 +5715,8 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 
 	if (msm_host->pdata->nonhotplug)
 		msm_host->mmc->caps2 |= MMC_CAP2_NONHOTPLUG;
+
+	msm_host->mmc->sdr104_wa = msm_host->pdata->sdr104_wa;
 
 	init_completion(&msm_host->pwr_irq_completion);
 
