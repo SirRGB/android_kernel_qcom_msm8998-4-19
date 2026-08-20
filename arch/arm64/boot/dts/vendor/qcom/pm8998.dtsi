@@ -130,19 +130,19 @@
 			#io-channel-cells = <1>;
 			io-channel-ranges;
 
-			ref_gnd {
+			ref_gnd@0 {
 				label = "ref_gnd";
 				reg = <ADC_REF_GND>;
 				qcom,pre-scaling = <1 1>;
 			};
 
-			vref_1p25 {
+			vref_1p25@1 {
 				label = "vref_1p25";
 				reg = <ADC_1P25VREF>;
 				qcom,pre-scaling = <1 1>;
 			};
 
-			die_temp {
+			die_temp@2 {
 				label = "die_temp";
 				reg = <ADC_DIE_TEMP>;
 				qcom,pre-scaling = <1 1>;

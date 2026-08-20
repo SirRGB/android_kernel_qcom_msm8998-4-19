@@ -790,7 +790,7 @@
 		qcom,pipe-attr-ee;
 	};
 
-	uartblsp1dm1: serial@0c170000 {
+	uartblsp1dm1: serial@c170000 {
 		compatible = "qcom,msm-uartdm-v1.4", "qcom,msm-uartdm";
 		reg = <0xc170000 0x1000>;
 		interrupts = <0 108 0>;
@@ -800,7 +800,7 @@
 		clock-names = "core", "iface";
 	};
 
-	uartblsp2dm1: serial@0c1b0000 {
+	uartblsp2dm1: serial@c1b0000 {
 		compatible = "qcom,msm-uartdm-v1.4", "qcom,msm-uartdm";
 		reg = <0xc1b0000 0x1000>;
 		interrupts = <0 114 0>;
@@ -1508,7 +1508,7 @@
 		qcom,ipa-napi-enable;
 	};
 
-	ipa_hw: qcom,ipa@01e00000 {
+	ipa_hw: qcom,ipa@1e00000 {
 		compatible = "qcom,ipa";
 		reg = <0x01e00000 0x34000>,
 			<0x01e04000 0x2c000>;
@@ -2554,7 +2554,7 @@
 		status="disabled";
 	};
 
-	pcie0: qcom,pcie@01c00000 {
+	pcie0: qcom,pcie@1c00000 {
 		compatible = "qcom,pci-msm";
 		cell-index = <0>;
 
@@ -3144,7 +3144,7 @@
 		};
 	};
 
-	tspp: msm_tspp@0c1e7000 {
+	tspp: msm_tspp@c1e7000 {
 		compatible = "qcom,msm_tspp";
 		reg = <0x0c1e7000 0x200>, /* MSM_TSIF0_PHYS */
 		      <0x0c1e8000 0x200>, /* MSM_TSIF1_PHYS */
