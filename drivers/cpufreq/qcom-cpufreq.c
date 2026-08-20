@@ -304,7 +304,7 @@ static struct freq_attr *msm_freq_attr[] = {
 
 static void msm_cpufreq_ready(struct cpufreq_policy *policy)
 {
-	struct device_node *np;
+	struct device_node *np, *lmh_node;
 	unsigned int cpu = policy->cpu;
 
 	if (cdev[cpu])
@@ -313,6 +313,16 @@ static void msm_cpufreq_ready(struct cpufreq_policy *policy)
 	np = of_cpu_device_node_get(cpu);
 	if (WARN_ON(!np))
 		return;
+
+	lmh_node = of_parse_phandle(np, "qcom,lmh-dcvs", 0);
+	if (lmh_node) {
+		if (!of_property_read_bool(lmh_node,
+					"qcom,no-cooling-device-register")) {
+			of_node_put(lmh_node);
+			goto out;
+		}
+		of_node_put(lmh_node);
+	}
 
 	/*
 	 * For now, just loading the cooling device;
@@ -326,6 +336,7 @@ static void msm_cpufreq_ready(struct cpufreq_policy *policy)
 			cdev[cpu] = NULL;
 		}
 	}
+out:
 	of_node_put(np);
 }
 

@@ -3259,7 +3259,6 @@
 		reg = <0x179ce800 0x1000>,
 			<0x179c1400 0x1000>;
 		#thermal-sensor-cells = <0>;
-		qcom,plat-mitigation-disable;
 		qcom,legacy-lmh-enable;
 	};
 
@@ -3270,7 +3269,6 @@
 		reg = <0x179cc800 0x1000>,
 			<0x179c3400 0x1000>;
 		#thermal-sensor-cells = <0>;
-		qcom,plat-mitigation-disable;
 		qcom,legacy-lmh-enable;
 	};
 };
