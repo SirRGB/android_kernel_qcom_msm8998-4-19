@@ -99,6 +99,7 @@ struct limits_dcvs_hw {
 	struct device_attribute lmh_freq_attr;
 	struct list_head list;
 	bool is_irq_enabled;
+	bool is_legacy;
 	struct mutex access_lock;
 	struct __limits_cdev_data *cdev_data;
 	uint32_t cdev_registered;
@@ -430,6 +431,39 @@ static struct cpu_cooling_ops cd_ops = {
 	.floor_limit = lmh_set_min_limit,
 };
 
+static void register_cluster_cooling_device(struct limits_dcvs_hw *hw)
+{
+	struct thermal_cooling_device *cdev;
+	struct cpufreq_policy *policy;
+	unsigned int cpu;
+
+	if (hw->cdev_registered)
+		return;
+
+	cpu = cpumask_any_and(&hw->core_map, &hw->online_mask);
+	if (cpu >= nr_cpu_ids)
+		return;
+
+	policy = cpufreq_cpu_get(cpu);
+	if (!policy) {
+		pr_err("no policy for cpu%d\n", cpu);
+		return;
+	}
+
+	cdev = cpufreq_platform_cooling_register(policy, &cd_ops);
+	cpufreq_cpu_put(policy);
+	if (IS_ERR_OR_NULL(cdev)) {
+		pr_err("CPU:%u cluster cdev register error:%ld\n",
+			cpu, PTR_ERR(cdev));
+		return;
+	}
+
+	hw->cdev_data[0].cdev = cdev;
+	hw->cdev_registered = cpumask_weight(&hw->core_map);
+	pr_debug("CPU:%u cluster cdev registered\n",
+		cpumask_first(&hw->core_map));
+}
+
 static void register_cooling_device(struct work_struct *work)
 {
 	struct limits_dcvs_hw *hw;
@@ -440,6 +474,10 @@ static void register_cooling_device(struct work_struct *work)
 	list_for_each_entry(hw, &lmh_dcvs_hw_list, list) {
 		if (hw->max_freq[0] == U32_MAX)
 			limits_dcvs_get_freq_limits(hw);
+		if (hw->is_legacy) {
+			register_cluster_cooling_device(hw);
+			continue;
+		}
 
 		idx = 0;
 		for_each_cpu(cpu, &hw->core_map) {
@@ -458,6 +496,7 @@ static void register_cooling_device(struct work_struct *work)
 			hw->cdev_data[idx].cdev =
 					cpufreq_platform_cooling_register(
 							policy, &cd_ops);
+			cpufreq_cpu_put(policy);
 			if (IS_ERR_OR_NULL(hw->cdev_data[idx].cdev)) {
 				pr_err("CPU:%u cdev register error:%ld\n",
 					cpu, PTR_ERR(hw->cdev_data[idx].cdev));
@@ -624,7 +663,8 @@ static int limits_dcvs_probe(struct platform_device *pdev)
 	}
 
 	/* Check legcay LMH HW enablement is needed or not */
-	if (of_property_read_bool(dn, "qcom,legacy-lmh-enable")) {
+	hw->is_legacy = of_property_read_bool(dn, "qcom,legacy-lmh-enable");
+	if (hw->is_legacy) {
 		/* Enable the thermal algorithm early */
 		ret = limits_dcvs_write(hw->affinity, LIMITS_SUB_FN_THERMAL,
 			 LIMITS_ALGO_MODE_ENABLE, 1, 0, 0);
