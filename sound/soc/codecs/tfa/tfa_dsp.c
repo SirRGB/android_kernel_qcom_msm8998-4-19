@@ -132,7 +132,7 @@ static void tfa_set_query_info (int dev_idx) {
 		_ASSERT(dev_idx >= MAX_HANDLES);
 		return;
 	}
-	
+
 	/* invalidate  device struct cached values */
 	handles_local[dev_idx].hw_feature_bits = -1;
 	handles_local[dev_idx].sw_feature_bits[0] = -1;
@@ -148,7 +148,7 @@ static void tfa_set_query_info (int dev_idx) {
 	handles_local[dev_idx].support_tcoef = supportYes;
 	handles_local[dev_idx].supportDrc = supportNotSet;
 	handles_local[dev_idx].support_saam = supportNotSet;
-	 
+
 	/* TODO use the getfeatures() for retrieving the features [artf103523]
 	handles_local[dev_idx].supportDrc = supportNotSet;*/
 
@@ -390,14 +390,14 @@ enum Tfa98xx_Error tfa98xx_close(Tfa98xx_handle_t handle)
 
 /*
  * 	return the target address for the filter on this device
-  
+
   filter_index:
 	[0..9] reserved for EQ (not deployed, calc. is available)
 	[10..12] anti-alias filter
 	[13]  integrator filter
 
  */
-enum Tfa98xx_DMEM tfa98xx_filter_mem(Tfa98xx_handle_t dev, int filter_index, unsigned short *address, int channel) 
+enum Tfa98xx_DMEM tfa98xx_filter_mem(Tfa98xx_handle_t dev, int filter_index, unsigned short *address, int channel)
 {
 	enum Tfa98xx_DMEM  dmem=-1;
 	int idx;
@@ -410,8 +410,8 @@ enum Tfa98xx_DMEM tfa98xx_filter_mem(Tfa98xx_handle_t dev, int filter_index, uns
 			{467,472,477,409}, //91 BRA_MAX_MRAA_13.02
 			{8832, 8837, 8842, 8847}, //88 part1
 			{8853, 8858, 8863, 8868}  //88 part2
-			/* Since the 88 is stereo we have 2 parts. 
-			 * Every index has 5 values except index 13 this one has 6 values 
+			/* Since the 88 is stereo we have 2 parts.
+			 * Every index has 5 values except index 13 this one has 6 values
 			 */
 	};
 
@@ -591,9 +591,9 @@ enum Tfa98xx_Error tfa98xx_compare_features(Tfa98xx_handle_t handle, int feature
 	features_from_MTP[0] = handles_local[handle].hw_feature_bits = value;
 
 	/* Read SW features: */
-	error = tfa_dsp_cmd_id_write_read(handle, MODULE_FRAMEWORK, 
+	error = tfa_dsp_cmd_id_write_read(handle, MODULE_FRAMEWORK,
 		FW_PAR_ID_GET_FEATURE_INFO, sizeof(bytes), bytes);
-	if (error != Tfa98xx_Error_Ok) 
+	if (error != Tfa98xx_Error_Ok)
 		return error; /* old ROM code may respond with Tfa98xx_Error_RpcParamId */
 	tfa98xx_convert_bytes2data(sizeof(bytes), bytes, &features_from_MTP[1]);
 
@@ -767,8 +767,8 @@ enum Tfa98xx_Error tfa98xx_init(Tfa98xx_handle_t handle)
 		handles_local[handle].dev_ops.controls.otc.deferrable = true;
 		handles_local[handle].dev_ops.controls.mtpex.deferrable = true;
 	}
-	switch (TFA_GET_BF(handle, REV) & 0xff) 
-    {		
+	switch (TFA_GET_BF(handle, REV) & 0xff)
+    {
 	case 0x80:
 			pr_debug("tfa98xx_init Dev ID %x\n",(TFA_GET_BF(handle, REV) & 0xff));
 	    break;
@@ -802,7 +802,7 @@ enum Tfa98xx_Error tfa98xx_dsp_write_tables(Tfa98xx_handle_t handle, int sample_
 
 /********************* new tfa2 *********************************************************************/
 /* newly added messaging for tfa2 tfa1? */
-enum Tfa98xx_Error tfa98xx_dsp_get_memory(Tfa98xx_handle_t handle, int memoryType, 
+enum Tfa98xx_Error tfa98xx_dsp_get_memory(Tfa98xx_handle_t handle, int memoryType,
 		int offset, int length, unsigned char bytes[])
 {
 	enum Tfa98xx_Error error = Tfa98xx_Error_Ok;
@@ -831,12 +831,12 @@ enum Tfa98xx_Error tfa98xx_dsp_get_memory(Tfa98xx_handle_t handle, int memoryTyp
 		return error;
 
 	/* read the data from the device (length * 3 = words) */
-	error = tfa_dsp_msg_read(handle, length * 3, bytes);	
+	error = tfa_dsp_msg_read(handle, length * 3, bytes);
 
 	return error;
 }
 
-enum Tfa98xx_Error tfa98xx_dsp_set_memory(Tfa98xx_handle_t handle, int memoryType, 
+enum Tfa98xx_Error tfa98xx_dsp_set_memory(Tfa98xx_handle_t handle, int memoryType,
 		int offset, int length, int value)
 {
 	enum Tfa98xx_Error error = Tfa98xx_Error_Ok;
@@ -1263,9 +1263,9 @@ tfa98xx_wait_result(Tfa98xx_handle_t handle, int wait_retry_count)
 /*
  * *  support functions for data conversion
  */
-/** 
- convert memory bytes to signed 24 bit integers  
-   input:  bytes contains "num_bytes" byte elements 
+/**
+ convert memory bytes to signed 24 bit integers
+   input:  bytes contains "num_bytes" byte elements
    output: data contains "num_bytes/3" int24 elements
 */
 void tfa98xx_convert_bytes2data(int num_bytes, const unsigned char bytes[],
@@ -1557,7 +1557,7 @@ enum Tfa98xx_Error tfa_dsp_msg(Tfa98xx_handle_t handle, int length, const char *
 		/* DSP RPC call returned an error */
 		error = (enum Tfa98xx_Error) (rpc_status + Tfa98xx_Error_RpcBase);
 		pr_debug("DSP msg status: %d (%s)\n", rpc_status, tfa98xx_get_i2c_status_id_string(rpc_status));
-	} 
+	}
 
 	return error;
 }
@@ -1592,7 +1592,7 @@ enum Tfa98xx_Error tfa_dsp_msg_id(Tfa98xx_handle_t handle, int length, const cha
 		/* DSP RPC call returned an error */
 		error = (enum Tfa98xx_Error) (rpc_status + Tfa98xx_Error_RpcBase);
 		pr_debug("DSP msg status: %d (%s)\n", rpc_status, tfa98xx_get_i2c_status_id_string(rpc_status));
-	} 
+	}
 
 	return error;
 }
@@ -1754,7 +1754,7 @@ Tfa98xx_DspBiquad_Disable(Tfa98xx_handle_t handle, int biquad_index)
 	bytes[2] = (unsigned char)biquad_index;
 
 	error = tfa_dsp_msg(handle, 3 + BIQUAD_COEFF_SIZE * 3, (char *)bytes);
-	
+
 	return error;
 }
 
@@ -1808,7 +1808,7 @@ enum Tfa98xx_Error tfa_dsp_cmd_id_write_read(Tfa98xx_handle_t handle,
 	if ( error!= Tfa98xx_Error_Ok)
 		return error;
 	/* read the data from the dsp */
-	error = tfa_dsp_msg_read(handle, num_bytes, data);	
+	error = tfa_dsp_msg_read(handle, num_bytes, data);
 
 	return error;
 }
@@ -1909,7 +1909,7 @@ tfa98xx_dsp_get_hw_feature_bits(Tfa98xx_handle_t handle, int *features)
 			if (!status) {
 				get_hw_features_from_cnt(handle, features);
 				/* skip reading MTP: */
-				return (*features == -1) ? Tfa98xx_Error_Fail : Tfa98xx_Error_Ok; 
+				return (*features == -1) ? Tfa98xx_Error_Fail : Tfa98xx_Error_Ok;
 			}
 			mtpbf=0x850f;  /* MTP5 for tfa1,16 bits */
 		} else
@@ -1939,7 +1939,7 @@ tfa98xx_dsp_get_sw_feature_bits(Tfa98xx_handle_t handle, int features[2])
 			if (!status) {
 				get_sw_features_from_cnt(handle, features);
 				/* skip reading MTP: */
-				return (features[0] == -1) ? Tfa98xx_Error_Fail : Tfa98xx_Error_Ok; 
+				return (features[0] == -1) ? Tfa98xx_Error_Fail : Tfa98xx_Error_Ok;
 			}
 		}
 		error = tfa_dsp_cmd_id_write_read(handle, MODULE_FRAMEWORK,
@@ -2547,7 +2547,7 @@ enum Tfa98xx_Error tfaRunSpeakerStartup(Tfa98xx_handle_t handle, int force, int 
 	// write all the files from the profile list (typically preset)
 	err = tfaContWriteFilesProf(handle, profile, 0); // use volumestep 0
 	if (err)
-		return err;	
+		return err;
 
 	return err;
 }
@@ -2578,7 +2578,7 @@ enum Tfa98xx_Error tfaRunSpeakerCalibration(Tfa98xx_handle_t handle, int profile
 	/* When MTPOTC is set (cal=once) unlock key2 */
 	if (TFA_GET_BF(handle, MTPOTC) == 1) {
 		tfa98xx_key2(handle, 0);
-	}	
+	}
 
 	/* await calibration, this should return ok */
 	err = tfaRunWaitCalibration(handle, &calibrateDone);
@@ -2601,7 +2601,7 @@ enum Tfa98xx_Error tfaRunSpeakerCalibration(Tfa98xx_handle_t handle, int profile
 			pr_debug(" %d mOhms \n", handles_local[handle].mohm[0]);
 		} else {
 			pr_debug(" Prim:%d mOhms, Sec:%d mOhms\n",
-						handles_local[handle].mohm[0], 
+						handles_local[handle].mohm[0],
 						handles_local[handle].mohm[1]);
 		}
 	}
@@ -2740,7 +2740,7 @@ enum Tfa98xx_Error tfaRunStartup(Tfa98xx_handle_t handle, int profile)
 		TFA_SET_BF_VOLATILE(handle, MANSCONF, 1);
 	}
     switch (TFA_GET_BF(handle, REV) & 0xff)
-    {	
+    {
 	case 0x80:
 	    err = tfa98xx_dsp_reset(handle, 1);
 	    pr_debug("tfaRunStartup Reset DSP after power on\n");
@@ -2863,7 +2863,7 @@ enum Tfa98xx_Error tfaRunWaitCalibration(Tfa98xx_handle_t handle, int *calibrate
 	int tries = 0, mtp_busy = 1, tries_mtp_busy = 0;
 
 	*calibrateDone = 0;
-	
+
 	/* in case of calibrate once wait for MTPEX */
 	if (TFA_GET_BF(handle, MTPOTC)) {
 		// Check if MTP_busy is clear!
@@ -2878,10 +2878,10 @@ enum Tfa98xx_Error tfaRunWaitCalibration(Tfa98xx_handle_t handle, int *calibrate
 		}
 
 		if (tries_mtp_busy < MTPBWAIT_TRIES) {
-			/* Because of the msleep TFA98XX_API_WAITRESULT_NTRIES is way to long! 
-				* Setting this to 25 will take it atleast 25*50ms = 1.25 sec 
+			/* Because of the msleep TFA98XX_API_WAITRESULT_NTRIES is way to long!
+				* Setting this to 25 will take it atleast 25*50ms = 1.25 sec
 				*/
-			while ( (*calibrateDone == 0) && (tries < MTPEX_WAIT_NTRIES)) {	
+			while ( (*calibrateDone == 0) && (tries < MTPEX_WAIT_NTRIES)) {
 				*calibrateDone = TFA_GET_BF(handle, MTPEX);
 				if(*calibrateDone == 1)
 					break;
@@ -2897,10 +2897,10 @@ enum Tfa98xx_Error tfaRunWaitCalibration(Tfa98xx_handle_t handle, int *calibrate
 		}
 	}
 
-	/* poll xmem for calibrate always 
+	/* poll xmem for calibrate always
 		* calibrateDone = 0 means "calibrating",
 		* calibrateDone = -1 (or 0xFFFFFF) means "fails"
-		* calibrateDone = 1 means calibration done 
+		* calibrateDone = 1 means calibration done
 		*/
 	while ((*calibrateDone != 1) && (tries<TFA98XX_API_WAITRESULT_NTRIES)) {
 		err = tfa98xx_dsp_read_mem(handle, TFA_FW_XMEM_CALIBRATION_DONE, 1, calibrateDone);
@@ -3016,12 +3016,12 @@ enum tfa_error tfa_start(int next_profile, int *vstep)
 	for( dev=0; dev < devcount; dev++) {
 		/* check if the profile and steps are the one we want */
 		/* was it not done already */
-		if (( next_profile != active_profile && active_profile != -1) 
+		if (( next_profile != active_profile && active_profile != -1)
 		       || (istap_prof == 1)) {
 			err = tfaContWriteProfile(dev, next_profile, vstep[dev]);
 			if (err!=Tfa98xx_Error_Ok)
 				goto error_exit;
-		} 
+		}
 
 		/* If the profile contains the .standby suffix go to powerdown
 		 * else we should be in operating state
@@ -3044,7 +3044,7 @@ enum tfa_error tfa_start(int next_profile, int *vstep)
 			goto error_exit;
 
 #ifdef __KERNEL__
-		/* To write something in state 6 we need to be sure that SBSL is also set in IOMEM! 
+		/* To write something in state 6 we need to be sure that SBSL is also set in IOMEM!
 		 * More information can be found in the document about the powerswitch
 		 */
 		if (tfa98xx_dev_family(dev) == 2) {
@@ -3225,13 +3225,13 @@ tfa_dsp_get_calibration_impedance(Tfa98xx_handle_t handle)
 	error = tfa98xx_supported_speakers(handle, &spkr_count);
 	if (error == Tfa98xx_Error_Ok) {
 		/* If calibrate=once then get values from MTP */
-		if (TFA_GET_BF(handle, MTPOTC) && ((handles_local[handle].rev & 0xff) == 0x88)) { 
+		if (TFA_GET_BF(handle, MTPOTC) && ((handles_local[handle].rev & 0xff) == 0x88)) {
 			if (tfa98xx_runtime_verbose)
 				pr_debug("Getting calibration values from MTP\n");
 			for(i=0; i<spkr_count; i++) {
 				handles_local[handle].mohm[i] = tfa_read_reg(handle, (uint16_t)TFA_MK_BF((0xF4+i),0,16));
 			}
-		} else {	
+		} else {
 			/* Get values from speakerboost */
 			if (tfa98xx_runtime_verbose)
 				pr_debug("Getting calibration values from Speakerboost\n");
@@ -3253,7 +3253,7 @@ tfa_dsp_get_calibration_impedance(Tfa98xx_handle_t handle)
 }
 
 /* start count from 1, 0 is invalid */
-int tfa_get_swprof(Tfa98xx_handle_t handle) 
+int tfa_get_swprof(Tfa98xx_handle_t handle)
 {
 	/* get from register if not set yet */
 	if ( handles_local[handle].profile < 0)

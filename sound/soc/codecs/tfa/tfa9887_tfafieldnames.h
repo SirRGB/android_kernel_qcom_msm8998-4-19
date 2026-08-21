@@ -1,5 +1,5 @@
 /** Filename: Tfa9887_TfaFieldnames.h
- *  This file was generated automatically on 04/14/15 at 10:23:40. 
+ *  This file was generated automatically on 04/14/15 at 10:23:40.
  *  Source file: TFA9897N1B_I2C_list_URT_source_v34_87Only.xls
  */
 

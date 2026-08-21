@@ -31,7 +31,7 @@ static enum Tfa98xx_Error tfa9888_specific(Tfa98xx_handle_t handle) {
 	error = tfa98xx_write_register16(handle, 0xA0, xor);
 
 	/* The optimal settings are different for 1c, 2c, 3b and 2b/1b */
-	if (handles_local[handle].rev == 0x2c88) {	
+	if (handles_local[handle].rev == 0x2c88) {
 		/* ----- generated code start ----- */
 		/* --------- Version v1 ---------- */
 		tfa98xx_write_register16(handle, 0x00, 0x164d); //POR=0x064d
@@ -114,7 +114,7 @@ static enum Tfa98xx_Error tfa9888_specific(Tfa98xx_handle_t handle) {
 	return error;
 }
 
-static enum Tfa98xx_Error tfa9888_tfa_dsp_write_tables(Tfa98xx_handle_t handle, int sample_rate) 
+static enum Tfa98xx_Error tfa9888_tfa_dsp_write_tables(Tfa98xx_handle_t handle, int sample_rate)
 {
 	unsigned char buffer[15] = {0};
 	int size = 15 * sizeof(char);

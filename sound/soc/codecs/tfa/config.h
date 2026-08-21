@@ -15,7 +15,7 @@
 #include <linux/ftrace.h>
 #include <sound/pcm.h>
 
-/* 
+/*
 	i2c transaction on Linux limited to 64k
 	(See Linux kernel documentation: Documentation/i2c/writing-clients)
 */
@@ -77,16 +77,23 @@ struct tfa98xx {
 	struct regmap *regmap;
 	struct i2c_client *i2c;
 	struct regulator *vdd;
-	struct snd_soc_codec *codec;
+	struct regulator *bob_power;
+	struct snd_soc_component *component;
 	struct workqueue_struct *tfa98xx_wq;
 	struct delayed_work init_work;
 	struct delayed_work monitor_work;
 	struct delayed_work interrupt_work;
 	struct delayed_work tapdet_work;
 	struct mutex dsp_lock;
+	bool removing;
+	bool dsp_registered;
+	bool state_sysfs_created;
+	bool log_sysfs_created;
+	bool rw_sysfs_created;
+	bool reg_sysfs_created;
 	struct pinctrl *pinctrl;
 	struct pinctrl_state *pinctrl_default_state;
-	struct pinctrl_state *pinctrl_sleep_state;	
+	struct pinctrl_state *pinctrl_sleep_state;
 	int dsp_init;
 	int dsp_fw_state;
 	int sysclk;
@@ -146,4 +153,3 @@ static inline int NXP_I2C_BufferSize(void)
 }
 
 #endif /* __CONFIG_LINUX_KERNEL_INC__ */
-

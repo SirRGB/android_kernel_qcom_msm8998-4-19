@@ -4,16 +4,16 @@
  *Licensed under the Apache License, Version 2.0 (the "License");
  *you may not use this file except in compliance with the License.
  *You may obtain a copy of the License at
- *            
+ *
  *http://www.apache.org/licenses/LICENSE-2.0
- *             
+ *
  *Unless required by applicable law or agreed to in writing, software
  *distributed under the License is distributed on an "AS IS" BASIS,
  *WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *See the License for the specific language governing permissions and
  *limitations under the License.
  */
- 
+
 #include "tfa_dsp_fw.h"
 #include "tfa_service.h"
 #include "tfa_internal.h"
@@ -22,15 +22,15 @@
 
 #ifdef TFA98XX_FULL
 /** clockless way to determine if this is the tfa9887
- *  by testing if the PVP bit is writable 
+ *  by testing if the PVP bit is writable
  */
 int tfa9887B_is87(Tfa98xx_handle_t handle)
 {
         unsigned short save_value, check_value;
-		
+
 	tfa98xx_read_register16(handle, 0x08, &save_value);
 	if ( (save_value&0x0400) == 0 ) // if clear it's 87
-		return 1;	
+		return 1;
 	/* try to clear pvp bit */
 	tfa98xx_write_register16(handle, 0x08, (save_value & ~0x0400));
 	tfa98xx_read_register16(handle, 0x08, &check_value);
