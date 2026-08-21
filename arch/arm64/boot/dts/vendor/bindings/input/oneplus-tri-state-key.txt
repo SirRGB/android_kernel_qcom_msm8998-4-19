@@ -1,0 +1,24 @@
+OnePlus tri-state alert slider
+
+Required properties:
+- compatible: must be "oneplus,tri-state-key"
+- tristate,gpio_key1: GPIO specifier for the mute position
+- tristate,gpio_key2: GPIO specifier for the do-not-disturb position
+- tristate,gpio_key3: GPIO specifier for the normal position
+- pinctrl-names: must contain "pmx_tri_state_key_active" and
+  "pmx_tri_state_key_suspend"
+- pinctrl-0: active pin configuration
+- pinctrl-1: suspend pin configuration
+
+Example:
+
+	tri_state_key {
+		compatible = "oneplus,tri-state-key";
+		tristate,gpio_key1 = <&tlmm 40 0>;
+		tristate,gpio_key2 = <&tlmm 42 0>;
+		tristate,gpio_key3 = <&tlmm 26 0>;
+		pinctrl-names = "pmx_tri_state_key_active",
+				"pmx_tri_state_key_suspend";
+		pinctrl-0 = <&tri_state_key_active>;
+		pinctrl-1 = <&tri_state_key_suspend>;
+	};
