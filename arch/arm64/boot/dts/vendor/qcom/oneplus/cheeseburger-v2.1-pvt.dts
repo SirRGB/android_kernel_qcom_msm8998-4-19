@@ -13,9 +13,9 @@
 
 /dts-v1/;
 
-#include "msm8998-v2.1.dtsi"
-#include "msm8998-mdss-panels.dtsi"
-#include "msm8998-mtp.dtsi"
+#include "../msm8998-v2.1.dtsi"
+#include "msm8998-oneplus-panel-supply.dtsi"
+#include "msm8998-oneplus-pinctrl.dtsi"
 #include "cheeseburger.dtsi"
 #include "cheeseburger-pvt.dtsi"
 
