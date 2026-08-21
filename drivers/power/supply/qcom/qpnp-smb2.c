@@ -1095,6 +1095,11 @@ static int smb2_batt_get_prop(struct power_supply *psy,
 	int rc = 0;
 	union power_supply_propval pval = {0, };
 
+	rc = smb2_oneplus_batt_get_property(chg, psp, val);
+	if (rc != -EOPNOTSUPP)
+		return rc;
+	rc = 0;
+
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
 		rc = smblib_get_prop_batt_status(chg, val);
@@ -1212,9 +1217,6 @@ static int smb2_batt_get_prop(struct power_supply *psy,
 		val->intval = chg->fcc_stepper_enable;
 		break;
 	default:
-		rc = smb2_oneplus_batt_get_property(chg, psp, val);
-		if (!rc)
-			break;
 		pr_err("batt power supply prop %d not supported\n", psp);
 		return -EINVAL;
 	}
@@ -1320,6 +1322,8 @@ static int smb2_batt_set_prop(struct power_supply *psy,
 		break;
 	default:
 		rc = smb2_oneplus_batt_set_property(chg, prop, val);
+		if (rc == -EOPNOTSUPP)
+			rc = -EINVAL;
 	}
 
 	return rc;

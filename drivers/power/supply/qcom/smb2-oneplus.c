@@ -18,6 +18,8 @@
 #include "smb-reg.h"
 #include "smb2-oneplus.h"
 
+#if IS_ENABLED(CONFIG_ARCH_ONEPLUS_MSM8998)
+
 #define ONEPLUS_HEARTBEAT_MS		6000
 #define ONEPLUS_RETRY_MS		1000
 #define ONEPLUS_CHG_TIMEOUT_COUNT	6000
@@ -189,6 +191,33 @@ static void oneplus_uovp(struct oneplus_smb2 *op)
 	mutex_unlock(&op->uovp_lock);
 }
 
+static int oneplus_set_otg_switch(struct oneplus_smb2 *op, bool enable)
+{
+	u8 role = enable ? 0 : UFP_EN_CMD_BIT;
+	u8 ctrl;
+	int i, rc = 0;
+
+	if (op->otg_switch == enable)
+		return 0;
+	for (i = 0; i < 10; i++) {
+		rc = smblib_masked_write(op->chg,
+			TYPE_C_INTRPT_ENB_SOFTWARE_CTRL_REG,
+			TYPEC_POWER_ROLE_CMD_MASK, role);
+		if (rc < 0)
+			return rc;
+		usleep_range(30000, 31000);
+		rc = smblib_read(op->chg,
+			TYPE_C_INTRPT_ENB_SOFTWARE_CTRL_REG, &ctrl);
+		if (rc < 0)
+			return rc;
+		if ((!role && !(ctrl & TYPEC_POWER_ROLE_CMD_MASK)) ||
+			(role && (ctrl & UFP_EN_CMD_BIT)))
+			break;
+	}
+	op->otg_switch = enable;
+	return i == 10 ? -ETIMEDOUT : 0;
+}
+
 static void oneplus_reset_session(struct oneplus_smb2 *op)
 {
 	op->usb_enumerated = false;
@@ -206,7 +235,7 @@ static void oneplus_reset_session(struct oneplus_smb2 *op)
 	oem_fastchg_set_fast_chg_allow(false);
 	oem_fastchg_set_switch_to_noraml_false();
 	oem_fastchg_set_usb_switch(false);
-	oem_dash_notify_charger_present(0);
+	oneplus_set_otg_switch(op, true);
 	__pm_relax(op->dash_ws);
 	vote(op->chg->chg_disable_votable, ONEPLUS_DASH_VOTER, false, 0);
 	vote(op->chg->chg_disable_votable, ONEPLUS_UOVP_VOTER, false, 0);
@@ -229,7 +258,8 @@ static void oneplus_policy_update(struct oneplus_smb2 *op)
 	op->dash_starting = fast_started && !fast_ing;
 	if (fast_started) {
 		op->dash_present = true;
-		oem_dash_notify_charger_present(1);
+		if (op->chg->batt_psy)
+			power_supply_changed(op->chg->batt_psy);
 		if (fast_ing && !op->dash_disabled_normal) {
 			vote(op->chg->chg_disable_votable,
 				ONEPLUS_DASH_VOTER, true, 0);
@@ -330,9 +360,14 @@ static void oneplus_retry_work(struct work_struct *work)
 		temp <= 430 &&
 		!get_effective_result(op->chg->chg_disable_votable);
 	if (allowed && op->retry_count++ < 3) {
+		oneplus_set_otg_switch(op, false);
 		oem_fastchg_set_usb_switch(true);
 		oem_fastchg_set_fast_chg_allow(true);
-		oem_dash_op_contrl(1, true);
+		op->dash_starting = true;
+		__pm_stay_awake(op->dash_ws);
+		smb2_oneplus_switcher_power(op->chg);
+		schedule_delayed_work(&op->watchdog_work,
+			msecs_to_jiffies(ONEPLUS_HEARTBEAT_MS));
 		schedule_delayed_work(&op->retry_work,
 			msecs_to_jiffies(ONEPLUS_RETRY_MS));
 	}
@@ -384,6 +419,7 @@ static int oneplus_op_control(void *ctx, int status, bool check_power_ok)
 
 	if (READ_ONCE(op->removed))
 		return -ENODEV;
+	mutex_lock(&op->policy_lock);
 	op->dash_starting = !!status;
 	if (status) {
 		__pm_stay_awake(op->dash_ws);
@@ -401,6 +437,7 @@ static int oneplus_op_control(void *ctx, int status, bool check_power_ok)
 	if (status && check_power_ok)
 		schedule_delayed_work(&op->watchdog_work,
 			msecs_to_jiffies(ONEPLUS_HEARTBEAT_MS));
+	mutex_unlock(&op->policy_lock);
 	return 0;
 }
 
@@ -410,6 +447,7 @@ static int oneplus_notify_present(void *ctx, int present)
 
 	if (READ_ONCE(op->removed))
 		return -ENODEV;
+	mutex_lock(&op->policy_lock);
 	op->dash_present = !!present && op->usb_present;
 	if (op->dash_present) {
 		op->chg->usb_psy_desc.type = POWER_SUPPLY_TYPE_USB_DCP;
@@ -419,6 +457,7 @@ static int oneplus_notify_present(void *ctx, int present)
 	}
 	if (op->chg->batt_psy)
 		power_supply_changed(op->chg->batt_psy);
+	mutex_unlock(&op->policy_lock);
 	return 0;
 }
 
@@ -606,6 +645,7 @@ void smb2_oneplus_enumeration(struct smb_charger *chg, bool configured)
 
 	if (!op)
 		return;
+	mutex_lock(&op->policy_lock);
 	op->usb_enumerated = configured;
 	if (configured) {
 		oem_fastchg_set_fast_chg_allow(false);
@@ -614,6 +654,7 @@ void smb2_oneplus_enumeration(struct smb_charger *chg, bool configured)
 		schedule_delayed_work(&op->retry_work,
 			msecs_to_jiffies(ONEPLUS_RETRY_MS));
 	}
+	mutex_unlock(&op->policy_lock);
 }
 
 int smb2_oneplus_batt_get_property(struct smb_charger *chg,
@@ -621,8 +662,23 @@ int smb2_oneplus_batt_get_property(struct smb_charger *chg,
 {
 	struct oneplus_smb2 *op = chg->oneplus;
 
-	if (!op || !oneplus_prop(prop))
-		return -EINVAL;
+	if (!op)
+		return -EOPNOTSUPP;
+	if (prop == POWER_SUPPLY_PROP_PRESENT) {
+		if (!oem_external_fg_registered())
+			return -EOPNOTSUPP;
+		val->intval = oem_external_fg_is_battery_present(true);
+		return 0;
+	}
+	if (prop == POWER_SUPPLY_PROP_HEALTH) {
+		if (!oem_external_fg_registered())
+			return -EOPNOTSUPP;
+		val->intval = oem_external_fg_get_batt_health(
+			POWER_SUPPLY_HEALTH_UNKNOWN);
+		return 0;
+	}
+	if (!oneplus_prop(prop))
+		return -EOPNOTSUPP;
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_SET_ALLOW_READ_EXTERN_FG_IIC:
@@ -700,7 +756,7 @@ int smb2_oneplus_batt_set_property(struct smb_charger *chg,
 	struct oneplus_smb2 *op = chg->oneplus;
 
 	if (!op || !oneplus_prop(prop))
-		return -EINVAL;
+		return -EOPNOTSUPP;
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_SET_ALLOW_READ_EXTERN_FG_IIC:
@@ -709,8 +765,7 @@ int smb2_oneplus_batt_set_property(struct smb_charger *chg,
 		op->lcd_off = !!val->intval;
 		return oem_external_fg_set_lcd_off_status(val->intval);
 	case POWER_SUPPLY_PROP_OTG_SWITCH:
-		op->otg_switch = !!val->intval;
-		return 0;
+		return oneplus_set_otg_switch(op, !!val->intval);
 	case POWER_SUPPLY_PROP_SWITCH_DASH:
 		return oem_fastchg_set_fast_chg_allow(!!val->intval);
 	case POWER_SUPPLY_PROP_NOTIFY_CHARGER_SET_PARAMETER:
@@ -744,3 +799,5 @@ int get_charging_status(void)
 	return oem_dash_get_charging_status(POWER_SUPPLY_STATUS_UNKNOWN);
 }
 EXPORT_SYMBOL(get_charging_status);
+
+#endif

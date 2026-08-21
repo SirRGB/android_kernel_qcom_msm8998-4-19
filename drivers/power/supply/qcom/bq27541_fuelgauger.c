@@ -318,7 +318,7 @@ static int bq27541_battery_temperature(struct bq27541_device_info *di)
 	if (atomic_read(&di->suspended) == 1)
 		return di->temp_pre + ZERO_DEGREE_CELSIUS_IN_TENTH_KELVIN;
 
-	if (di->allow_reading) {
+	if (READ_ONCE(di->allow_reading)) {
 
 #ifdef CONFIG_GAUGE_BQ27411
 		/* david.liu@bsp, 20161004 Add BQ27411 support */
@@ -366,7 +366,7 @@ static int bq27541_battery_voltage(struct bq27541_device_info *di)
 	if (atomic_read(&di->suspended) == 1)
 		return di->batt_vol_pre;
 
-	if (di->allow_reading) {
+	if (READ_ONCE(di->allow_reading)) {
 #ifdef CONFIG_GAUGE_BQ27411
 		/* david.liu@bsp, 20161004 Add BQ27411 support */
 		ret = bq27541_read(di->cmd_addr.reg_volt,
@@ -815,7 +815,7 @@ struct bq27541_device_info *di, int suspend_time_ms)
 		return di->soc_pre;
 	}
 
-	if (di->allow_reading) {
+	if (READ_ONCE(di->allow_reading)) {
 #ifdef CONFIG_GAUGE_BQ27411
 		/* david.liu@bsp, 20161004 Add BQ27411 support */
 		ret = bq27541_read(di->cmd_addr.reg_soc,
@@ -888,7 +888,7 @@ static int bq27541_average_current(struct bq27541_device_info *di)
 	if (atomic_read(&di->suspended) == 1)
 		return -di->current_pre;
 
-	if (di->allow_reading) {
+	if (READ_ONCE(di->allow_reading)) {
 #ifdef CONFIG_GAUGE_BQ27411
 		/* david.liu@bsp, 20161004 Add BQ27411 support */
 		ret = bq27541_read(di->cmd_addr.reg_ai,
@@ -918,7 +918,7 @@ static int bq27541_remaining_capacity(struct bq27541_device_info *di)
 	if (atomic_read(&di->suspended))
 		return di->rmcap_pre;
 
-	if (di->allow_reading) {
+	if (READ_ONCE(di->allow_reading)) {
 #ifdef CONFIG_GAUGE_BQ27411
 		/* david.liu@bsp, 20161004 Add BQ27411 support */
 		ret = bq27541_read(di->cmd_addr.reg_rm,
@@ -942,7 +942,7 @@ static int bq27541_design_capacity(struct bq27541_device_info *di)
 
 	if (atomic_read(&di->suspended))
 		return di->dcap_pre;
-	if (di->allow_reading) {
+	if (READ_ONCE(di->allow_reading)) {
 		ret = bq27541_read(BQ27541_REG_DCAP, &cap, 0, di);
 		if (ret)
 			return ret;
@@ -957,7 +957,7 @@ static int bq27541_full_chg_capacity(struct bq27541_device_info *di)
 
 	if (atomic_read(&di->suspended))
 		return di->fcc_pre;
-	if (di->allow_reading) {
+	if (READ_ONCE(di->allow_reading)) {
 		ret = bq27541_read(di->device_type == DEVICE_BQ27411 ?
 				BQ27411_REG_FCC : BQ27541_REG_FCC, &cap, 0, di);
 		if (ret)
@@ -972,7 +972,7 @@ static int bq27541_batt_health(struct bq27541_device_info *di)
 	int ret;
 	int health = 0;
 
-	if (di->allow_reading) {
+	if (READ_ONCE(di->allow_reading)) {
 		ret = bq27541_read(di->cmd_addr.reg_helth,
 				&health, 0, di);
 		if (ret) {
@@ -1087,7 +1087,7 @@ static int bq27541_set_allow_reading(void *ctx, int enable)
 {
 	struct bq27541_device_info *di = ctx;
 
-	di->allow_reading = enable;
+	WRITE_ONCE(di->allow_reading, enable);
 
 	return 0;
 }
@@ -1202,7 +1202,7 @@ static void update_battery_soc_work(struct work_struct *work)
 			return;
 		if (di->set_smoothing)
 			return;
-		if (!di->allow_reading)
+		if (!READ_ONCE(di->allow_reading))
 			bq27541_set_allow_reading(di, true);
 		return;
 	}
@@ -1352,7 +1352,7 @@ static int bq27541_configure(struct bq27541_device_info *di)
 		pr_info("DEVICE_BQ27541\n");
 	}
 	gauge_set_cmd_addr(di, di->device_type);
-	di->allow_reading = true;
+	WRITE_ONCE(di->allow_reading, true);
 #endif
 
 	di->registered = true;
@@ -1965,7 +1965,7 @@ static int bq27541_battery_probe(struct i2c_client *client,
 	di->temp_pre = 0;
 #ifndef CONFIG_GAUGE_BQ27411
 	/* david.liu@bsp, 20161004 Add BQ27411 support */
-	di->allow_reading = true;
+	WRITE_ONCE(di->allow_reading, true);
 #endif
 	/* Add for retry when config fail */
 	di->retry_count = MAX_RETRY_COUNT;

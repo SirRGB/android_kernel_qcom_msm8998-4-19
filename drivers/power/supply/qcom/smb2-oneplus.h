@@ -31,14 +31,14 @@ static inline void smb2_oneplus_deinit(struct smb_charger *chg) { }
 static inline int smb2_oneplus_batt_get_property(struct smb_charger *chg,
 		enum power_supply_property prop, union power_supply_propval *val)
 {
-	return -EINVAL;
+	return -EOPNOTSUPP;
 }
 
 static inline int smb2_oneplus_batt_set_property(struct smb_charger *chg,
 		enum power_supply_property prop,
 		const union power_supply_propval *val)
 {
-	return -EINVAL;
+	return -EOPNOTSUPP;
 }
 
 static inline void smb2_oneplus_usb_event(struct smb_charger *chg,

@@ -302,8 +302,6 @@ static int dashchg_fw_write(struct fastchg_device_info *di,
 static irqreturn_t irq_rx_handler(int irq, void *dev_id);
 static void reset_mcu_and_request_irq(struct fastchg_device_info *di)
 {
-	int ret;
-
 	pr_info("\n");
 	gpio_direction_output(di->ap_clk, 1);
 	usleep_range(10000, 10001);
@@ -312,22 +310,8 @@ static void reset_mcu_and_request_irq(struct fastchg_device_info *di)
 	gpio_direction_output(di->mcu_en_gpio, 0);
 	usleep_range(5000, 5001);
 	opchg_set_data_active(di);
-	di->irq = gpio_to_irq(di->ap_data);
-
-	/* 0x01:rising edge, 0x02:falling edge */
-	if (di->irq_requested) {
-		if (!di->irq_enabled) {
-			enable_irq(di->irq);
-			di->irq_enabled = true;
-		}
-		return;
-	}
-	ret = request_irq(di->irq, irq_rx_handler,
-			IRQF_TRIGGER_RISING, "mcu_data", di);
-	if (ret < 0)
-		pr_err("request ap rx irq failed.\n");
-	else {
-		di->irq_requested = true;
+	if (di->irq_requested && !di->irq_enabled) {
+		enable_irq(di->irq);
 		di->irq_enabled = true;
 	}
 }
@@ -618,8 +602,6 @@ static void update_fast_chg_started(struct fastchg_device_info *di)
 
 static void request_mcu_irq(struct fastchg_device_info *di)
 {
-	int retval;
-
 	opchg_set_data_active(di);
 	gpio_set_value(di->ap_clk, 0);
 	usleep_range(10000, 10001);
@@ -627,22 +609,11 @@ static void request_mcu_irq(struct fastchg_device_info *di)
 	if (di->adapter_update_real
 		!= ADAPTER_FW_NEED_UPDATE) {
 		pr_info("%s\n", __func__);
-	if (!di->irq_requested) {
-		retval = request_irq(di->irq, irq_rx_handler,
-				IRQF_TRIGGER_RISING, "mcu_data", di);
-		if (retval < 0)
-			pr_err("request ap rx irq failed.\n");
-		else {
-			di->irq_requested = true;
+		if (di->irq_requested && !di->irq_enabled) {
+			enable_irq(di->irq);
 			di->irq_enabled = true;
 		}
-	} else if (!di->irq_enabled) {
-		enable_irq(di->irq);
-		di->irq_enabled = true;
 	}
-	} else {
-		di->irq_enabled = true;
-}
 }
 static void fastcg_work_func(struct work_struct *work)
 {
@@ -809,6 +780,7 @@ static void adapter_update_work_func(struct work_struct *work)
 	mutex_lock(&chip->update_lock);
 	if (chip->removed || !chip->adapter_chip) {
 		pr_info("%s g_adapter_chip NULL\n", __func__);
+		__pm_relax(chip->fastchg_wake_lock);
 		mutex_unlock(&chip->update_lock);
 		return;
 	}
@@ -1253,6 +1225,8 @@ static void free_dash_gpios(struct fastchg_device_info *di)
 
 static int dash_pinctrl_init(struct fastchg_device_info *di)
 {
+	int ret;
+
 	di->pinctrl = devm_pinctrl_get(&di->client->dev);
 	if (IS_ERR_OR_NULL(di->pinctrl)) {
 		int rc = IS_ERR(di->pinctrl) ? PTR_ERR(di->pinctrl) : -ENODEV;
@@ -1267,7 +1241,8 @@ static int dash_pinctrl_init(struct fastchg_device_info *di)
 	if (IS_ERR_OR_NULL(di->pinctrl_state_active)) {
 		dev_err(&di->client->dev,
 				"Can not fastchg_active state\n");
-		return PTR_ERR(di->pinctrl_state_active);
+		return IS_ERR(di->pinctrl_state_active) ?
+			PTR_ERR(di->pinctrl_state_active) : -ENODEV;
 	}
 	di->pinctrl_state_suspended =
 		pinctrl_lookup_state(di->pinctrl,
@@ -1275,33 +1250,33 @@ static int dash_pinctrl_init(struct fastchg_device_info *di)
 	if (IS_ERR_OR_NULL(di->pinctrl_state_suspended)) {
 		dev_err(&di->client->dev,
 				"Can not fastchg_suspend state\n");
-		return PTR_ERR(di->pinctrl_state_suspended);
+		return IS_ERR(di->pinctrl_state_suspended) ?
+			PTR_ERR(di->pinctrl_state_suspended) : -ENODEV;
 	}
 
-		di->pinctrl_mcu_data_state_active =
-			pinctrl_lookup_state(di->pinctrl,
-					"mcu_data_active");
-		if (IS_ERR_OR_NULL(di->pinctrl_mcu_data_state_active)) {
-			dev_err(&di->client->dev,
-					"Can not mcu_data_active state\n");
-			return PTR_ERR(di->pinctrl_mcu_data_state_active);
-		}
-		di->pinctrl_mcu_data_state_suspended =
-					pinctrl_lookup_state(di->pinctrl,
-							"mcu_data_suspend");
-		if (IS_ERR_OR_NULL(di->pinctrl_mcu_data_state_suspended)) {
-			dev_err(&di->client->dev,
-					"Can not fastchg_suspend state\n");
-			return PTR_ERR(di->pinctrl_mcu_data_state_suspended);
-		}
+	di->pinctrl_mcu_data_state_active = pinctrl_lookup_state(di->pinctrl,
+			"mcu_data_active");
+	if (IS_ERR_OR_NULL(di->pinctrl_mcu_data_state_active)) {
+		dev_err(&di->client->dev, "Can not mcu_data_active state\n");
+		return IS_ERR(di->pinctrl_mcu_data_state_active) ?
+			PTR_ERR(di->pinctrl_mcu_data_state_active) : -ENODEV;
+	}
+	di->pinctrl_mcu_data_state_suspended = pinctrl_lookup_state(di->pinctrl,
+			"mcu_data_suspend");
+	if (IS_ERR_OR_NULL(di->pinctrl_mcu_data_state_suspended)) {
+		dev_err(&di->client->dev, "Can not mcu_data_suspend state\n");
+		return IS_ERR(di->pinctrl_mcu_data_state_suspended) ?
+			PTR_ERR(di->pinctrl_mcu_data_state_suspended) : -ENODEV;
+	}
 
-	if (pinctrl_select_state(di->pinctrl,
-				di->pinctrl_state_active) < 0)
-		return -EINVAL;
+	ret = pinctrl_select_state(di->pinctrl, di->pinctrl_state_active);
+	if (ret < 0)
+		return ret;
 
-	if (pinctrl_select_state(di->pinctrl,
-				di->pinctrl_mcu_data_state_active) < 0)
-		return -EINVAL;
+	ret = pinctrl_select_state(di->pinctrl,
+			di->pinctrl_mcu_data_state_active);
+	if (ret < 0)
+		return ret;
 
 	return 0;
 
