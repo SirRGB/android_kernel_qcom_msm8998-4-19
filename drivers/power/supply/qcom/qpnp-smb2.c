@@ -18,6 +18,7 @@
 #include <linux/regulator/machine.h>
 #include "smb-reg.h"
 #include "smb-lib.h"
+#include "smb2-oneplus.h"
 #include "storm-watch.h"
 #include <linux/pmic-voter.h>
 
@@ -1072,6 +1073,18 @@ static enum power_supply_property smb2_batt_props[] = {
 	POWER_SUPPLY_PROP_TIME_TO_FULL_NOW,
 	POWER_SUPPLY_PROP_CYCLE_COUNT,
 	POWER_SUPPLY_PROP_FCC_STEPPER_ENABLE,
+#if IS_ENABLED(CONFIG_ARCH_ONEPLUS_MSM8998)
+	POWER_SUPPLY_PROP_SET_ALLOW_READ_EXTERN_FG_IIC,
+	POWER_SUPPLY_PROP_CC_TO_CV_POINT,
+	POWER_SUPPLY_PROP_CHG_PROTECT_STATUS,
+	POWER_SUPPLY_PROP_FASTCHG_STATUS,
+	POWER_SUPPLY_PROP_FASTCHG_STARTING,
+	POWER_SUPPLY_PROP_UPDATE_LCD_IS_OFF,
+	POWER_SUPPLY_PROP_CHECK_USB_UNPLUG,
+	POWER_SUPPLY_PROP_OTG_SWITCH,
+	POWER_SUPPLY_PROP_SWITCH_DASH,
+	POWER_SUPPLY_PROP_NOTIFY_CHARGER_SET_PARAMETER,
+#endif
 };
 
 static int smb2_batt_get_prop(struct power_supply *psy,
@@ -1199,6 +1212,9 @@ static int smb2_batt_get_prop(struct power_supply *psy,
 		val->intval = chg->fcc_stepper_enable;
 		break;
 	default:
+		rc = smb2_oneplus_batt_get_property(chg, psp, val);
+		if (!rc)
+			break;
 		pr_err("batt power supply prop %d not supported\n", psp);
 		return -EINVAL;
 	}
@@ -1303,7 +1319,7 @@ static int smb2_batt_set_prop(struct power_supply *psy,
 		power_supply_changed(chg->batt_psy);
 		break;
 	default:
-		rc = -EINVAL;
+		rc = smb2_oneplus_batt_set_property(chg, prop, val);
 	}
 
 	return rc;
@@ -1325,6 +1341,13 @@ static int smb2_batt_prop_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_STEP_CHARGING_ENABLED:
 	case POWER_SUPPLY_PROP_SW_JEITA_ENABLED:
 	case POWER_SUPPLY_PROP_DIE_HEALTH:
+#if IS_ENABLED(CONFIG_ARCH_ONEPLUS_MSM8998)
+	case POWER_SUPPLY_PROP_SET_ALLOW_READ_EXTERN_FG_IIC:
+	case POWER_SUPPLY_PROP_UPDATE_LCD_IS_OFF:
+	case POWER_SUPPLY_PROP_OTG_SWITCH:
+	case POWER_SUPPLY_PROP_SWITCH_DASH:
+	case POWER_SUPPLY_PROP_NOTIFY_CHARGER_SET_PARAMETER:
+#endif
 		return 1;
 	default:
 		break;

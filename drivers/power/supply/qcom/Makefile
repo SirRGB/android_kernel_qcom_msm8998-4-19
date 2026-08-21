@@ -18,3 +18,5 @@ obj-$(CONFIG_QPNP_VM_BMS)		+= qpnp-vm-bms.o batterydata-lib.o batterydata-interf
 obj-$(CONFIG_QPNP_LINEAR_CHARGER)	+= qpnp-linear-charger.o
 obj-$(CONFIG_FG_BQ27541)		+= bq27541_fuelgauger.o
 obj-$(CONFIG_ONEPLUS_FASTCHG)		+= op_dash_adapter.o oneplus_fastcg.o
+obj-$(CONFIG_ARCH_ONEPLUS_MSM8998)	+= oem_external_fg.o
+obj-$(CONFIG_ARCH_ONEPLUS_MSM8998)	+= smb2-oneplus.o

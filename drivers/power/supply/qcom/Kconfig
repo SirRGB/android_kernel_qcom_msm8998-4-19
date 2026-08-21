@@ -2,8 +2,8 @@
 
 menu "Qualcomm Technologies, Inc. Charger and Fuel Gauge support"
 config FG_BQ27541
-	tristate "TI bq27541 fg"
-	depends on I2C
+	bool "TI bq27541 fg"
+	depends on I2C && ARCH_ONEPLUS_MSM8998
 	help
 	  Say Y here to enable the TI Fuel Gauge driver.This adds support
 	  for battery fuel gauging and state of charge of battery connected to
@@ -11,8 +11,8 @@ config FG_BQ27541
 	  supply property and also sends uevents when the capacity is updated.
 
 config ONEPLUS_FASTCHG
-	tristate "ONEPLUS FAST CHARGE"
-	depends on I2C
+	bool "ONEPLUS FAST CHARGE"
+	depends on I2C && ARCH_ONEPLUS_MSM8998
 	help
 	  Say Y here to enable the OnePlus DASH fast-charge controller.
 

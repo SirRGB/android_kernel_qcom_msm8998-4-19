@@ -14,6 +14,7 @@
 #include <linux/platform_device.h>
 #include <linux/iio/consumer.h>
 #include <linux/qpnp/qpnp-revid.h>
+#include <linux/power/oem_external_fg.h>
 #include <linux/qpnp/qpnp-misc.h>
 #include "fg-core.h"
 #include "fg-reg.h"
@@ -236,6 +237,7 @@ struct fg_gen3_chip {
 	bool			ki_coeff_dischg_en;
 	bool			esr_fcc_ctrl_en;
 	bool			esr_flt_cold_temp_en;
+	bool			use_external_fg;
 	bool			slope_limit_en;
 };
 
@@ -3647,25 +3649,44 @@ static int fg_psy_get_property(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_CAPACITY:
-		rc = fg_get_prop_capacity(fg, &pval->intval);
+		if (chip->use_external_fg) {
+			if (oem_external_fg_registered())
+				pval->intval = oem_external_fg_get_battery_soc(50);
+			else
+				pval->intval = get_prop_pre_shutdown_soc();
+		} else {
+			rc = fg_get_prop_capacity(fg, &pval->intval);
+		}
 		break;
 	case POWER_SUPPLY_PROP_REAL_CAPACITY:
-		rc = fg_get_prop_real_capacity(fg, &pval->intval);
+		if (chip->use_external_fg)
+			pval->intval = oem_external_fg_get_batt_bq_soc(50);
+		else
+			rc = fg_get_prop_real_capacity(fg, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY_RAW:
 		rc = fg_get_msoc_raw(fg, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		if (fg->battery_missing)
+		if (chip->use_external_fg)
+			pval->intval = oem_external_fg_get_battery_mvolts(3700000);
+		else if (fg->battery_missing)
 			pval->intval = 3700000;
 		else
 			rc = fg_get_battery_voltage(fg, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		rc = fg_get_battery_current(fg, &pval->intval);
+		if (chip->use_external_fg)
+			pval->intval = oem_external_fg_get_average_current(0);
+		else
+			rc = fg_get_battery_current(fg, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
-		rc = fg_get_battery_temp(fg, &pval->intval);
+		if (chip->use_external_fg)
+			pval->intval =
+				oem_external_fg_get_battery_temperature(-400);
+		else
+			rc = fg_get_battery_temp(fg, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_COLD_TEMP:
 		rc = fg_get_jeita_threshold(fg, JEITA_COLD, &pval->intval);
@@ -3702,7 +3723,9 @@ static int fg_psy_get_property(struct power_supply *psy,
 		rc = fg_get_sram_prop(fg, FG_SRAM_OCV, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
-		pval->intval = chip->cl.nom_cap_uah;
+		pval->intval = chip->use_external_fg ?
+			oem_external_fg_get_batt_design_capacity(
+				chip->cl.nom_cap_uah) : chip->cl.nom_cap_uah;
 		break;
 	case POWER_SUPPLY_PROP_RESISTANCE_ID:
 		pval->intval = fg->batt_id_ohms;
@@ -3726,13 +3749,27 @@ static int fg_psy_get_property(struct power_supply *psy,
 		pval->intval = chip->cl.init_cc_uah;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
-		pval->intval = chip->cl.learned_cc_uah;
+		pval->intval = chip->use_external_fg ?
+			oem_external_fg_get_batt_full_chg_capacity(
+				chip->cl.learned_cc_uah) : chip->cl.learned_cc_uah;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
-		rc = fg_get_charge_counter(fg, &pval->intval);
+		if (chip->use_external_fg) {
+			pval->intval = oem_external_fg_get_battery_soc(50) *
+				oem_external_fg_get_batt_full_chg_capacity(
+					chip->cl.learned_cc_uah) / 100;
+		} else {
+			rc = fg_get_charge_counter(fg, &pval->intval);
+		}
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_COUNTER_SHADOW:
-		rc = fg_get_charge_counter_shadow(fg, &pval->intval);
+		if (chip->use_external_fg) {
+			pval->intval = oem_external_fg_get_batt_bq_soc(50) *
+				oem_external_fg_get_batt_full_chg_capacity(
+					chip->cl.learned_cc_uah) / 100;
+		} else {
+			rc = fg_get_charge_counter_shadow(fg, &pval->intval);
+		}
 		break;
 	case POWER_SUPPLY_PROP_TIME_TO_FULL_AVG:
 		rc = fg_get_time_to_full(fg, &pval->intval);
@@ -3884,6 +3921,19 @@ static int fg_psy_set_property(struct power_supply *psy,
 	int rc = 0;
 
 	switch (psp) {
+#ifdef CONFIG_ARCH_ONEPLUS_MSM8998
+	case POWER_SUPPLY_PROP_CC_TO_CV_POINT:
+		/* External gauge owns the CC-to-CV transition policy. */
+		break;
+	case POWER_SUPPLY_PROP_SET_ALLOW_READ_EXTERN_FG_IIC:
+		if (chip->use_external_fg)
+			rc = oem_external_fg_set_allow_reading(pval->intval);
+		break;
+	case POWER_SUPPLY_PROP_UPDATE_LCD_IS_OFF:
+		if (chip->use_external_fg)
+			rc = oem_external_fg_set_lcd_off_status(pval->intval);
+		break;
+#endif
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE:
 		rc = fg_set_constant_chg_voltage(fg, pval->intval);
 		break;
@@ -4954,6 +5004,9 @@ static int fg_parse_dt(struct fg_gen3_chip *chip)
 		dev_err(fg->dev, "device tree node missing\n");
 		return -ENXIO;
 	}
+
+	chip->use_external_fg = of_property_read_bool(node,
+			"oem,use_external_fg");
 
 	revid_node = of_parse_phandle(node, "qcom,pmic-revid", 0);
 	if (!revid_node) {

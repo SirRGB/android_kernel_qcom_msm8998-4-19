@@ -231,6 +231,8 @@ struct reg_info {
 	const char	*desc;
 };
 
+struct oneplus_smb2;
+
 struct smb_charger {
 	struct device		*dev;
 	char			*name;
@@ -378,6 +380,7 @@ struct smb_charger {
 	int			pulse_cnt;
 
 	int			die_health;
+	struct oneplus_smb2	*oneplus;
 };
 
 int smblib_read(struct smb_charger *chg, u16 addr, u8 *val);
