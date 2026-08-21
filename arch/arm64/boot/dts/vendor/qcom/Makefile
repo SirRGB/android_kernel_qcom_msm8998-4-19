@@ -451,6 +451,18 @@ sdm630-mtp.dtb \
         sda630-pm660a-qrd-hdk.dtb
 endif
 
+dtb-$(CONFIG_ARCH_ONEPLUS_CHEESEBURGER) += \
+	oneplus/cheeseburger-v2.1-backup.dtb \
+	oneplus/cheeseburger-v2.1-dvt1.dtb \
+	oneplus/cheeseburger-v2.1-pvt.dtb \
+	oneplus/cheeseburger-v2.1-pvt1.dtb
+
+dtb-$(CONFIG_ARCH_ONEPLUS_DUMPLING) += \
+	oneplus/dumpling-v2.1-Second_Resource.dtb \
+	oneplus/dumpling-v2.1-backup.dtb \
+	oneplus/dumpling-v2.1-dvt.dtb \
+	oneplus/dumpling-v2.1-pvt.dtb
+
 always		:= $(dtb-y)
 subdir-y	:= $(dts-dirs)
 clean-files    := *.dtb *.dtbo
