@@ -175,4 +175,3 @@ void tfa9890_ops(struct tfa_device_ops *ops) {
 	ops->tfa_dsp_reset = tfa9890_dsp_reset;
 	ops->tfa_dsp_system_stable = tfa9890_dsp_system_stable;
 }
-

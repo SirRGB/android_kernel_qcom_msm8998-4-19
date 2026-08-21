@@ -708,8 +708,8 @@ enum Tfa98xx_Error tfa98xx_write_data(Tfa98xx_handle_t handle,
 				  const unsigned char data[]);
 
 enum Tfa98xx_Error tfa98xx_write_raw(Tfa98xx_handle_t handle,
-		  	  	  int num_bytes,
-		  	  	  const unsigned char data[]);
+				  int num_bytes,
+				  const unsigned char data[]);
 
 /* support for converting error codes into text */
 const char *tfa98xx_get_error_string(enum Tfa98xx_Error error);
