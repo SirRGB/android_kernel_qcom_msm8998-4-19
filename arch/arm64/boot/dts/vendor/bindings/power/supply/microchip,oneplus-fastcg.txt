@@ -1,0 +1,17 @@
+OnePlus DASH fast-charge microcontroller
+
+Required properties:
+- compatible: must be "microchip,oneplus_fastcg"
+- reg: I2C slave address
+- microchip,mcu-en-gpio: MCU reset/enable GPIO
+- microchip,usb-sw-1-gpio: first USB data-switch GPIO
+- microchip,usb-sw-2-gpio: second USB data-switch GPIO
+- microchip,ap-clk: AP-to-MCU clock GPIO
+- microchip,ap-data: MCU-to-AP data and rising-edge interrupt GPIO
+- pinctrl-names: must contain "mux_fastchg_active",
+  "mux_fastchg_suspend", "mcu_data_active", and "mcu_data_suspend"
+- pinctrl-0 through pinctrl-3: states corresponding to pinctrl-names
+
+The driver obtains the active-only SNOC and CNOC MSM bus voter clocks from
+the MSM8998 RPM clock provider. They are intentionally not consumer DT
+properties.

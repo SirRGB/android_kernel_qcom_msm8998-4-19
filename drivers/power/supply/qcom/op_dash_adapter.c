@@ -222,11 +222,11 @@ static void dash_uart_irq_fiq_enable(bool enable)
 {
 	if (enable) {
 		preempt_enable();
-		local_fiq_enable();
+		local_irq_enable();
 		local_irq_enable();
 	} else {
 		local_irq_disable();
-		local_fiq_disable();
+		local_irq_disable();
 		preempt_disable();
 	}
 }
@@ -590,9 +590,11 @@ static int __init dash_adapter_init(void)
 	return 0;
 }
 
-static void __init dash_adapter_exit(void)
+static void __exit dash_adapter_exit(void)
 {
-
+	op_adapter_init(NULL);
+	kfree(the_chip);
+	the_chip = NULL;
 }
 
 module_init(dash_adapter_init);

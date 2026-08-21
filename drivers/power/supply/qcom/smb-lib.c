@@ -11,11 +11,121 @@
 #include <linux/qpnp/qpnp-revid.h>
 #include <linux/irq.h>
 #include <linux/pmic-voter.h>
+#include <linux/power/oem_external_fg.h>
 #include "smb-lib.h"
 #include "smb-reg.h"
 #include "battery.h"
 #include "step-chg-jeita.h"
 #include "storm-watch.h"
+
+static DEFINE_MUTEX(oneplus_gauge_lock);
+static struct external_battery_gauge *fast_charger;
+static struct regmap *soc_regmap;
+
+#define SOC_DATA_REG_0	0x88d
+#define SOC_INVALID	0x7e
+
+void op_pm8998_regmap_register(struct regmap *regmap)
+{
+	mutex_lock(&oneplus_gauge_lock);
+	soc_regmap = regmap;
+	mutex_unlock(&oneplus_gauge_lock);
+}
+EXPORT_SYMBOL(op_pm8998_regmap_register);
+
+void op_pm8998_regmap_unregister(struct regmap *regmap)
+{
+	mutex_lock(&oneplus_gauge_lock);
+	if (soc_regmap == regmap)
+		soc_regmap = NULL;
+	mutex_unlock(&oneplus_gauge_lock);
+}
+EXPORT_SYMBOL(op_pm8998_regmap_unregister);
+
+int load_soc(void)
+{
+	unsigned int stored;
+	int rc;
+
+	mutex_lock(&oneplus_gauge_lock);
+	rc = soc_regmap ? regmap_read(soc_regmap, SOC_DATA_REG_0, &stored) :
+			-ENODEV;
+	mutex_unlock(&oneplus_gauge_lock);
+	if (rc || !(stored & BIT(7)))
+		return -EINVAL;
+	stored = (stored & GENMASK(7, 1)) >> 1;
+	return stored <= 100 ? stored : -EINVAL;
+}
+EXPORT_SYMBOL(load_soc);
+
+void backup_soc_ex(int soc)
+{
+	unsigned int stored = SOC_INVALID;
+
+	if (soc >= 0 && soc <= 100)
+		stored = BIT(7) | (soc << 1);
+	mutex_lock(&oneplus_gauge_lock);
+	if (soc_regmap)
+		regmap_update_bits(soc_regmap, SOC_DATA_REG_0,
+				GENMASK(7, 1), stored);
+	mutex_unlock(&oneplus_gauge_lock);
+}
+EXPORT_SYMBOL(backup_soc_ex);
+
+void clean_backup_soc_ex(void)
+{
+	mutex_lock(&oneplus_gauge_lock);
+	if (soc_regmap)
+		regmap_update_bits(soc_regmap, SOC_DATA_REG_0,
+				GENMASK(7, 1), SOC_INVALID);
+	mutex_unlock(&oneplus_gauge_lock);
+}
+EXPORT_SYMBOL(clean_backup_soc_ex);
+
+int get_charging_status(void)
+{
+	struct power_supply *psy;
+	union power_supply_propval val;
+	int rc;
+
+	psy = power_supply_get_by_name("battery");
+	if (!psy)
+		return POWER_SUPPLY_STATUS_UNKNOWN;
+	rc = power_supply_get_property(psy, POWER_SUPPLY_PROP_STATUS, &val);
+	power_supply_put(psy);
+	return rc ? POWER_SUPPLY_STATUS_UNKNOWN : val.intval;
+}
+EXPORT_SYMBOL(get_charging_status);
+
+bool get_oem_charge_done_status(void)
+{
+	return get_charging_status() == POWER_SUPPLY_STATUS_FULL;
+}
+EXPORT_SYMBOL(get_oem_charge_done_status);
+
+int fuelgauge_battery_temp_region_get(void)
+{
+	return BATT_TEMP_NORMAL;
+}
+EXPORT_SYMBOL(fuelgauge_battery_temp_region_get);
+
+void fastcharge_information_register(struct external_battery_gauge *gauge)
+{
+	mutex_lock(&oneplus_gauge_lock);
+	fast_charger = gauge;
+	mutex_unlock(&oneplus_gauge_lock);
+}
+EXPORT_SYMBOL(fastcharge_information_register);
+
+void fastcharge_information_unregister(struct external_battery_gauge *gauge)
+{
+	mutex_lock(&oneplus_gauge_lock);
+	if (fast_charger == gauge)
+		fast_charger = NULL;
+	mutex_unlock(&oneplus_gauge_lock);
+}
+EXPORT_SYMBOL(fastcharge_information_unregister);
+
 
 #define smblib_err(chg, fmt, ...)		\
 	pr_err("%s: %s: " fmt, chg->name,	\

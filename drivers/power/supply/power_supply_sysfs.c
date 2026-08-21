@@ -283,6 +283,18 @@ static ssize_t power_supply_store_property(struct device *dev,
 static struct device_attribute power_supply_attrs[] = {
 	/* Properties of type `int' */
 	POWER_SUPPLY_ATTR(status),
+#ifdef CONFIG_ARCH_ONEPLUS_MSM8998
+	POWER_SUPPLY_ATTR(set_allow_read_extern_fg_iic),
+	POWER_SUPPLY_ATTR(cc_to_cv_point),
+	POWER_SUPPLY_ATTR(chg_protect_status),
+	POWER_SUPPLY_ATTR(fastchg_status),
+	POWER_SUPPLY_ATTR(fastchg_starting),
+	POWER_SUPPLY_ATTR(update_lcd_is_off),
+	POWER_SUPPLY_ATTR(check_usb_unplug),
+	POWER_SUPPLY_ATTR(otg_switch),
+	POWER_SUPPLY_ATTR(switch_dash),
+	POWER_SUPPLY_ATTR(notify_charger_set_parameter),
+#endif
 	POWER_SUPPLY_ATTR(charge_type),
 	POWER_SUPPLY_ATTR(health),
 	POWER_SUPPLY_ATTR(present),

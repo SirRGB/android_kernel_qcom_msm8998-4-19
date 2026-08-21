@@ -15,8 +15,29 @@
 #include <linux/iio/consumer.h>
 #include <linux/qpnp/qpnp-revid.h>
 #include <linux/qpnp/qpnp-misc.h>
+#include <linux/power/oem_external_fg.h>
 #include "fg-core.h"
 #include "fg-reg.h"
+
+static DEFINE_MUTEX(external_fg_lock);
+static struct external_battery_gauge *external_fg;
+
+void external_battery_gauge_register(struct external_battery_gauge *gauge)
+{
+	mutex_lock(&external_fg_lock);
+	external_fg = gauge;
+	mutex_unlock(&external_fg_lock);
+}
+EXPORT_SYMBOL(external_battery_gauge_register);
+
+void external_battery_gauge_unregister(struct external_battery_gauge *gauge)
+{
+	mutex_lock(&external_fg_lock);
+	if (external_fg == gauge)
+		external_fg = NULL;
+	mutex_unlock(&external_fg_lock);
+}
+EXPORT_SYMBOL(external_battery_gauge_unregister);
 
 #define FG_GEN3_DEV_NAME	"qcom,fg-gen3"
 

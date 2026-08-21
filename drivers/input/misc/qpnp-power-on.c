@@ -18,6 +18,7 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/power_supply.h>
+#include <linux/power/oem_external_fg.h>
 #include <linux/regmap.h>
 #include <linux/slab.h>
 #include <linux/spmi.h>
@@ -2394,6 +2395,10 @@ static int qpnp_pon_probe(struct platform_device *pdev)
 
 	if (sys_reset)
 		sys_reset_dev = pon;
+#if IS_ENABLED(CONFIG_FG_BQ27541)
+	if (sys_reset)
+		op_pm8998_regmap_register(pon->regmap);
+#endif
 	if (modem_reset)
 		modem_reset_dev = pon;
 
@@ -2410,6 +2415,10 @@ static int qpnp_pon_remove(struct platform_device *pdev)
 	device_remove_file(&pdev->dev, &dev_attr_debounce_us);
 
 	cancel_delayed_work_sync(&pon->bark_work);
+#if IS_ENABLED(CONFIG_FG_BQ27541)
+	if (pon == sys_reset_dev)
+		op_pm8998_regmap_unregister(pon->regmap);
+#endif
 
 	qpnp_pon_debugfs_remove(pon);
 	if (pon->is_spon) {
