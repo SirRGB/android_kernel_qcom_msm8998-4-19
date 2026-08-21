@@ -21,6 +21,9 @@
 #include "mdss_dba_utils.h"
 #include "mdss_debug.h"
 #include "mdss_livedisplay.h"
+#ifdef CONFIG_FB_MSM_MDSS_FLICKER_FREE
+#include "flicker_free.h"
+#endif
 
 #define DT_CMD_HDR 6
 #define DEFAULT_MDP_TRANSFER_TIME 14000
@@ -308,6 +311,7 @@ int mdss_dsi_bl_gpio_ctrl(struct mdss_panel_data *pdata, int enable)
 
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
+
 	if (ctrl_pdata == NULL) {
 		pr_err("%s: Invalid ctrl data\n", __func__);
 		return -EINVAL;
@@ -859,6 +863,19 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
+
+#ifdef CONFIG_FB_MSM_MDSS_FLICKER_FREE
+	if (bl_level)
+		bl_level = mdss_panel_calc_backlight(bl_level);
+#endif
+
+#ifdef CONFIG_ARCH_ONEPLUS_MSM8998
+	if (pdata->event_handler)
+		pdata->event_handler(pdata,
+				MDSS_EVENT_PANEL_SET_HBM_MODE_ALLOWED,
+				(void *)(unsigned long)
+				(bl_level >= (ctrl_pdata->bklt_max * 4 / 5)));
+#endif
 
 	/*
 	 * Some backlight controllers specify a minimum duty cycle

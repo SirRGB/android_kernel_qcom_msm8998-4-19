@@ -48,6 +48,9 @@
 #include "mdss_sync.h"
 
 #include "mdss_livedisplay.h"
+#ifdef CONFIG_FB_MSM_MDSS_FLICKER_FREE
+#include "flicker_free.h"
+#endif
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MDSS_FB_NUM 3
@@ -917,6 +920,69 @@ end:
 	return len;
 }
 
+#ifdef CONFIG_ARCH_ONEPLUS_MSM8998
+static ssize_t mdss_fb_panel_mode_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
+static ssize_t mdss_fb_panel_mode_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count);
+
+static DEVICE_ATTR(srgb, 0644, mdss_fb_panel_mode_show,
+		mdss_fb_panel_mode_store);
+static DEVICE_ATTR(dci_p3, 0644, mdss_fb_panel_mode_show,
+		mdss_fb_panel_mode_store);
+static DEVICE_ATTR(oneplus_mode, 0644, mdss_fb_panel_mode_show,
+		mdss_fb_panel_mode_store);
+static DEVICE_ATTR(adaption_mode, 0644, mdss_fb_panel_mode_show,
+		mdss_fb_panel_mode_store);
+
+static int mdss_fb_panel_mode_event(struct device_attribute *attr, bool set)
+{
+	if (attr == &dev_attr_srgb)
+		return set ? MDSS_EVENT_PANEL_SET_SRGB_MODE :
+			MDSS_EVENT_PANEL_GET_SRGB_MODE;
+	if (attr == &dev_attr_dci_p3)
+		return set ? MDSS_EVENT_PANEL_SET_DCI_P3_MODE :
+			MDSS_EVENT_PANEL_GET_DCI_P3_MODE;
+	if (attr == &dev_attr_oneplus_mode)
+		return set ? MDSS_EVENT_PANEL_SET_ONEPLUS_MODE :
+			MDSS_EVENT_PANEL_GET_ONEPLUS_MODE;
+	return set ? MDSS_EVENT_PANEL_SET_ADAPTION_MODE :
+		MDSS_EVENT_PANEL_GET_ADAPTION_MODE;
+}
+
+static ssize_t mdss_fb_panel_mode_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct fb_info *fbi = dev_get_drvdata(dev);
+	struct msm_fb_data_type *mfd = fbi->par;
+	int level;
+
+	level = mdss_fb_send_panel_event(mfd,
+			mdss_fb_panel_mode_event(attr, false), NULL);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", level);
+}
+
+static ssize_t mdss_fb_panel_mode_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct fb_info *fbi = dev_get_drvdata(dev);
+	struct msm_fb_data_type *mfd = fbi->par;
+	int level;
+	int rc;
+
+	rc = kstrtoint(buf, 10, &level);
+	if (rc)
+		return rc;
+	if (level != 0 && level != 1)
+		return -EINVAL;
+
+	rc = mdss_fb_send_panel_event(mfd,
+			mdss_fb_panel_mode_event(attr, true),
+			(void *)(unsigned long)level);
+	return rc ? rc : count;
+}
+#endif
+
 static ssize_t msm_fb_persist_mode_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -972,6 +1038,12 @@ static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_msm_fb_panel_status.attr,
 	&dev_attr_msm_fb_dfps_mode.attr,
 	&dev_attr_measured_fps.attr,
+#ifdef CONFIG_ARCH_ONEPLUS_MSM8998
+	&dev_attr_srgb.attr,
+	&dev_attr_dci_p3.attr,
+	&dev_attr_oneplus_mode.attr,
+	&dev_attr_adaption_mode.attr,
+#endif
 	&dev_attr_msm_fb_persist_mode.attr,
 	&dev_attr_idle_power_collapse.attr,
 	NULL,
@@ -1849,6 +1921,11 @@ static int mdss_fb_start_disp_thread(struct msm_fb_data_type *mfd)
 		mfd->disp_thread = NULL;
 	}
 
+#ifdef CONFIG_FB_MSM_MDSS_FLICKER_FREE
+	if (!ret)
+		mdss_fb_update_flicker_free_mfd(mfd);
+#endif
+
 	return ret;
 }
 
@@ -1859,6 +1936,9 @@ static void mdss_fb_stop_disp_thread(struct msm_fb_data_type *mfd)
 
 	kthread_stop(mfd->disp_thread);
 	mfd->disp_thread = NULL;
+#ifdef CONFIG_FB_MSM_MDSS_FLICKER_FREE
+	mdss_fb_update_flicker_free_mfd(NULL);
+#endif
 }
 
 static void mdss_panel_validate_debugfs_info(struct msm_fb_data_type *mfd)
