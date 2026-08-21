@@ -388,12 +388,15 @@ static void oneplus_watchdog_work(struct work_struct *work)
 	struct oneplus_smb2 *op = container_of(to_delayed_work(work),
 		struct oneplus_smb2, watchdog_work);
 
+	mutex_lock(&op->policy_lock);
 	if (!READ_ONCE(op->removed) && op->dash_present &&
 		!oem_fastchg_get_fast_chg_ing()) {
-		oem_dash_notify_event();
+		oem_fastchg_set_usb_switch(false);
+		op->dash_present = false;
 		schedule_delayed_work(&op->recovery_work,
 			msecs_to_jiffies(ONEPLUS_RETRY_MS));
 	}
+	mutex_unlock(&op->policy_lock);
 }
 
 static int oneplus_notify_event(void *ctx)
