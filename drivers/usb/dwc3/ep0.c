@@ -22,6 +22,7 @@
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
 #include <linux/usb/composite.h>
+#include <linux/power/oem_external_fg.h>
 
 #include "core.h"
 #include "debug.h"
@@ -31,6 +32,11 @@
 static bool enable_dwc3_u1u2;
 module_param(enable_dwc3_u1u2, bool, 0644);
 MODULE_PARM_DESC(enable_dwc3_u1u2, "Enable support for U1U2 low power modes");
+
+static void dwc3_ep0_publish_enumeration(bool configured)
+{
+	oem_usb_enumeration_notify(configured);
+}
 
 static void __dwc3_ep0_do_control_status(struct dwc3 *dwc, struct dwc3_ep *dep);
 static void __dwc3_ep0_do_control_data(struct dwc3 *dwc,
@@ -139,6 +145,7 @@ static int __dwc3_gadget_ep0_queue(struct dwc3_ep *dep,
 		direction = !dwc->ep0_expect_in;
 		dwc->delayed_status = false;
 		usb_gadget_set_state(&dwc->gadget, USB_STATE_CONFIGURED);
+		dwc3_ep0_publish_enumeration(true);
 
 		if (dwc->ep0state == EP0_STATUS_PHASE)
 			__dwc3_ep0_do_control_status(dwc, dwc->eps[direction]);
@@ -706,9 +713,11 @@ static int dwc3_ep0_set_config(struct dwc3 *dwc, struct usb_ctrlrequest *ctrl)
 			 * USB_GADGET_DELAYED_STATUS, we will wait
 			 * to change the state on the next usb_ep_queue()
 			 */
-			if (ret == 0)
+			if (ret == 0) {
 				usb_gadget_set_state(&dwc->gadget,
 						USB_STATE_CONFIGURED);
+				dwc3_ep0_publish_enumeration(true);
+			}
 
 			if (!dwc->usb3_u1u2_disable || enable_dwc3_u1u2) {
 				/*
@@ -725,9 +734,11 @@ static int dwc3_ep0_set_config(struct dwc3 *dwc, struct usb_ctrlrequest *ctrl)
 
 	case USB_STATE_CONFIGURED:
 		ret = dwc3_ep0_delegate_req(dwc, ctrl);
-		if (!cfg && !ret)
+		if (!cfg && !ret) {
 			usb_gadget_set_state(&dwc->gadget,
 					USB_STATE_ADDRESS);
+			dwc3_ep0_publish_enumeration(false);
+		}
 		break;
 	default:
 		ret = -EINVAL;
@@ -1237,6 +1248,7 @@ static void dwc3_ep0_xfernotready(struct dwc3 *dwc,
 				dwc->delayed_status = false;
 				usb_gadget_set_state(&dwc->gadget,
 						     USB_STATE_CONFIGURED);
+				dwc3_ep0_publish_enumeration(true);
 				dwc3_ep0_do_control_status(dwc, event);
 			}
 

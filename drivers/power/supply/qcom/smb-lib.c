@@ -12,6 +12,7 @@
 #include <linux/irq.h>
 #include <linux/pmic-voter.h>
 #include "smb-lib.h"
+#include "smb2-oneplus.h"
 #include "smb-reg.h"
 #include "battery.h"
 #include "step-chg-jeita.h"
@@ -3686,6 +3687,7 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 	}
 
 	vbus_rising = (bool)(stat & USBIN_PLUGIN_RT_STS_BIT);
+	smb2_oneplus_usb_event(chg, vbus_rising);
 	smblib_set_opt_freq_buck(chg, vbus_rising ? chg->chg_freq.freq_5V :
 						chg->chg_freq.freq_removal);
 
@@ -4744,6 +4746,8 @@ irqreturn_t smblib_handle_switcher_power_ok(int irq, void *data)
 	int rc, usb_icl;
 	u8 stat;
 
+	smb2_oneplus_switcher_power(chg);
+
 	if (!(chg->wa_flags & BOOST_BACK_WA))
 		return IRQ_HANDLED;
 
@@ -5510,6 +5514,12 @@ int smblib_init(struct smb_charger *chg)
 				return rc;
 			}
 		}
+		rc = smb2_oneplus_init(chg);
+		if (rc < 0) {
+			smblib_err(chg, "Couldn't init OnePlus companion rc=%d\n",
+				rc);
+			return rc;
+		}
 		break;
 	case PARALLEL_SLAVE:
 		break;
@@ -5525,6 +5535,7 @@ int smblib_deinit(struct smb_charger *chg)
 {
 	switch (chg->mode) {
 	case PARALLEL_MASTER:
+		smb2_oneplus_deinit(chg);
 		cancel_work_sync(&chg->bms_update_work);
 		cancel_work_sync(&chg->pl_update_work);
 		cancel_work_sync(&chg->rdstd_cc2_detach_work);
