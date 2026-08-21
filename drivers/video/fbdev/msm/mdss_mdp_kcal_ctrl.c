@@ -260,7 +260,7 @@ static void mdss_mdp_kcal_update_pa(struct kcal_lut_data *lut_data)
 		mdss_mdp_pa_config(fb0_ctl->mfd, &pa_config, &copyback);
 	} else {
 		memset(&pa_v2_config, 0, sizeof(struct mdp_pa_v2_cfg_data));
-		
+
 		pa_v2_config.version = mdp_pa_v1_7;
 		pa_v2_config.block = MDP_LOGICAL_BLOCK_DISP_0;
 		pa_v2_config.pa_v2_data.flags = lut_data->enable ?
@@ -567,6 +567,22 @@ static DEVICE_ATTR(kcal_val, S_IWUSR | S_IRUGO, kcal_val_show, kcal_val_store);
 static DEVICE_ATTR(kcal_cont, S_IWUSR | S_IRUGO, kcal_cont_show,
 	kcal_cont_store);
 
+static struct attribute *kcal_attrs[] = {
+	&dev_attr_kcal.attr,
+	&dev_attr_kcal_min.attr,
+	&dev_attr_kcal_enable.attr,
+	&dev_attr_kcal_invert.attr,
+	&dev_attr_kcal_sat.attr,
+	&dev_attr_kcal_hue.attr,
+	&dev_attr_kcal_val.attr,
+	&dev_attr_kcal_cont.attr,
+	NULL,
+};
+
+static const struct attribute_group kcal_attr_group = {
+	.attrs = kcal_attrs,
+};
+
 static int mdss_mdp_kcal_update_queue(struct device *dev)
 {
 	struct kcal_lut_data *lut_data = dev_get_drvdata(dev);
@@ -649,14 +665,7 @@ static int kcal_ctrl_probe(struct platform_device *pdev)
 	}
 #endif
 
-	ret = device_create_file(&pdev->dev, &dev_attr_kcal);
-	ret |= device_create_file(&pdev->dev, &dev_attr_kcal_min);
-	ret |= device_create_file(&pdev->dev, &dev_attr_kcal_enable);
-	ret |= device_create_file(&pdev->dev, &dev_attr_kcal_invert);
-	ret |= device_create_file(&pdev->dev, &dev_attr_kcal_sat);
-	ret |= device_create_file(&pdev->dev, &dev_attr_kcal_hue);
-	ret |= device_create_file(&pdev->dev, &dev_attr_kcal_val);
-	ret |= device_create_file(&pdev->dev, &dev_attr_kcal_cont);
+	ret = sysfs_create_group(&pdev->dev.kobj, &kcal_attr_group);
 	if (ret) {
 		pr_err("%s: unable to create sysfs entries\n", __func__);
 		goto out_notifier;
@@ -677,14 +686,7 @@ static int kcal_ctrl_remove(struct platform_device *pdev)
 {
 	struct kcal_lut_data *lut_data = platform_get_drvdata(pdev);
 
-	device_remove_file(&pdev->dev, &dev_attr_kcal);
-	device_remove_file(&pdev->dev, &dev_attr_kcal_min);
-	device_remove_file(&pdev->dev, &dev_attr_kcal_enable);
-	device_remove_file(&pdev->dev, &dev_attr_kcal_invert);
-	device_remove_file(&pdev->dev, &dev_attr_kcal_sat);
-	device_remove_file(&pdev->dev, &dev_attr_kcal_hue);
-	device_remove_file(&pdev->dev, &dev_attr_kcal_val);
-	device_remove_file(&pdev->dev, &dev_attr_kcal_cont);
+	sysfs_remove_group(&pdev->dev.kobj, &kcal_attr_group);
 
 #if defined(CONFIG_MMI_PANEL_NOTIFICATIONS)
 	mmi_panel_unregister_notifier(&lut_data->panel_nb);
@@ -709,11 +711,17 @@ static struct platform_device kcal_ctrl_device = {
 
 static int __init kcal_ctrl_init(void)
 {
-	if (platform_driver_register(&kcal_ctrl_driver))
-		return -ENODEV;
+	int ret;
 
-	if (platform_device_register(&kcal_ctrl_device))
-		return -ENODEV;
+	ret = platform_driver_register(&kcal_ctrl_driver);
+	if (ret)
+		return ret;
+
+	ret = platform_device_register(&kcal_ctrl_device);
+	if (ret) {
+		platform_driver_unregister(&kcal_ctrl_driver);
+		return ret;
+	}
 
 	pr_info("%s: registered\n", __func__);
 

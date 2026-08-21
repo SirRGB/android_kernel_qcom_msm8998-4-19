@@ -22,6 +22,7 @@
 
 #include <asm/uaccess.h>
 #include <linux/fb.h>
+#include <linux/module.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
@@ -35,7 +36,7 @@
 #define FF_MAX_SCALE 32768
 
 /* Minimum value of RGB recommended */
-#define FF_MIN_SCALE 2560 
+#define FF_MIN_SCALE 2560
 
 /* Number of backlight entries */
 #define BACKLIGHT_INDEX 66
@@ -56,21 +57,24 @@ static const uint32_t pcc_depth[9] = {
 	128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768
 };
 
-static struct mdp_pcc_cfg_data pcc_config;
-static struct mdp_dither_cfg_data dither_config;
-static struct mdp_dither_data_v1_7 *dither_payload;
-static struct mdp_pcc_data_v1_7 *payload;
-static struct msm_fb_data_type *ff_mfd;
+struct flicker_free_ctx {
+	struct msm_fb_data_type *mfd;
+	struct mdp_pcc_cfg_data pcc_config;
+	struct mdp_dither_cfg_data dither_config;
+	struct mdp_dither_data_v1_7 dither_payload;
+	struct mdp_pcc_data_v1_7 payload;
+	uint32_t dither_copyback;
+	uint32_t copyback;
+	bool pcc_enabled;
+	bool enabled;
+};
 
-static uint32_t dither_copyback = 0;
-static uint32_t copyback = 0;
+static DEFINE_MUTEX(flicker_free_lock);
+static struct flicker_free_ctx *ff_ctx;
+static struct proc_dir_entry *ff_proc_root;
 
-/* State booleans */
-static bool pcc_enabled = false;
-static bool mdss_backlight_enable = false;
-
-static inline int 
-flicker_free_push(struct msm_fb_data_type *mfd, int bl_lvl, bool enable)
+static inline int
+flicker_free_push(struct flicker_free_ctx *ctx, int bl_lvl, bool enable)
 {
 	uint32_t backlight, temp, depth;
 
@@ -89,59 +93,66 @@ flicker_free_push(struct msm_fb_data_type *mfd, int bl_lvl, bool enable)
 	}
 
 	/* Configure dither values */
-	dither_config.flags = MDP_PP_OPS_WRITE;
-	if (mdss_backlight_enable)
-		dither_config.flags |= MDP_PP_OPS_ENABLE;
+	ctx->dither_config.flags = MDP_PP_OPS_WRITE;
+	if (ctx->enabled)
+		ctx->dither_config.flags |= MDP_PP_OPS_ENABLE;
 	else
-		dither_config.flags |= MDP_PP_OPS_DISABLE;
+		ctx->dither_config.flags |= MDP_PP_OPS_DISABLE;
 
-	dither_payload->r_cr_depth = dither_config.r_cr_depth = depth;
-	dither_payload->g_y_depth = dither_config.g_y_depth = depth;
-	dither_payload->b_cb_depth = dither_config.b_cb_depth = depth;
+	ctx->dither_payload.r_cr_depth = ctx->dither_config.r_cr_depth = depth;
+	ctx->dither_payload.g_y_depth = ctx->dither_config.g_y_depth = depth;
+	ctx->dither_payload.b_cb_depth = ctx->dither_config.b_cb_depth = depth;
 
-	dither_payload->len = dither_payload->temporal_en = 0;
+	ctx->dither_payload.len = ctx->dither_payload.temporal_en = 0;
 
-	dither_config.cfg_payload = dither_payload;
+	ctx->dither_config.cfg_payload = &ctx->dither_payload;
 
 	/* Configure pcc values */
-	pcc_config.ops = MDP_PP_OPS_WRITE;
+	ctx->pcc_config.ops = MDP_PP_OPS_WRITE;
 	if (enable)
-		pcc_config.ops |= MDP_PP_OPS_ENABLE;
+		ctx->pcc_config.ops |= MDP_PP_OPS_ENABLE;
 	else
-		pcc_config.ops |= MDP_PP_OPS_DISABLE;
+		ctx->pcc_config.ops |= MDP_PP_OPS_DISABLE;
 
-	payload->r.r = pcc_config.r.r = temp;
-	payload->g.g = pcc_config.g.g = temp;
-	payload->b.b = pcc_config.b.b = temp;
+	ctx->payload.r.r = ctx->pcc_config.r.r = temp;
+	ctx->payload.g.g = ctx->pcc_config.g.g = temp;
+	ctx->payload.b.b = ctx->pcc_config.b.b = temp;
 
-	pcc_config.cfg_payload = payload;
+	ctx->pcc_config.cfg_payload = &ctx->payload;
 
 	/* Push values consecutively */
-	return mdss_mdp_dither_config(mfd, &dither_config, &dither_copyback, 1) ||
-				mdss_mdp_kernel_pcc_config(mfd, &pcc_config, &copyback);
+	return mdss_mdp_dither_config(ctx->mfd, &ctx->dither_config,
+			&ctx->dither_copyback, 1) ||
+		mdss_mdp_pcc_config(ctx->mfd, &ctx->pcc_config,
+			&ctx->copyback);
 }
 
 uint32_t mdss_panel_calc_backlight(uint32_t bl_lvl)
 {
-	struct msm_fb_data_type *mfd = ff_mfd;
-	bool target_pcc_en = mdss_backlight_enable;
+	struct flicker_free_ctx *ctx;
+	bool target_pcc_en;
 
-	if (!mfd)
-		return bl_lvl;
+	mutex_lock(&flicker_free_lock);
+	ctx = ff_ctx;
+	if (!ctx)
+		goto out;
+	target_pcc_en = ctx->enabled;
 
 	/* We don't need flicker free above elvss */
 	if (bl_lvl >= elvss_off_threshold)
 		target_pcc_en = false;
 
-	if (target_pcc_en || pcc_enabled) {
+	if (target_pcc_en || ctx->pcc_enabled) {
 		/* Only configure target pcc_enabled if we're successful */
-		if (!flicker_free_push(mfd, bl_lvl, target_pcc_en))
-			pcc_enabled = target_pcc_en;
+		if (!flicker_free_push(ctx, bl_lvl, target_pcc_en))
+			ctx->pcc_enabled = target_pcc_en;
 
-		if (pcc_enabled)
-			return elvss_off_threshold;
+		if (ctx->pcc_enabled)
+			bl_lvl = elvss_off_threshold;
 	}
 
+out:
+	mutex_unlock(&flicker_free_lock);
 	return bl_lvl;
 }
 
@@ -151,26 +162,35 @@ uint32_t mdss_panel_calc_backlight(uint32_t bl_lvl)
 static ssize_t ff_write_proc(struct file *file, const char __user *buffer,
 								size_t count, loff_t *pos)
 {
-	struct msm_fb_data_type *mfd = ff_mfd;
+	struct flicker_free_ctx *ctx;
+	struct msm_fb_data_type *mfd;
 	int value = 0;
 	bool state;
 
-	if (!mfd)
+	mutex_lock(&flicker_free_lock);
+	ctx = ff_ctx;
+	if (!ctx) {
+		mutex_unlock(&flicker_free_lock);
 		return count;
+	}
+	mfd = ctx->mfd;
 
 	get_user(value, buffer);
 	state = (value != '0');
 
-	if (mdss_backlight_enable != state) {
+	if (ctx->enabled != state) {
 		/* Reset backlight */
 		mutex_lock(&mfd->bl_lock);
 		mfd->unset_bl_level = mfd->bl_level_usr;
 		mfd->allow_bl_update = false;
 		mutex_unlock(&mfd->bl_lock);
 
-		mdss_backlight_enable = state;
+		ctx->enabled = state;
+		mutex_unlock(&flicker_free_lock);
 		mdss_fb_update_backlight(mfd);
+		return count;
 	}
+	mutex_unlock(&flicker_free_lock);
 
 	return count;
 }
@@ -178,7 +198,9 @@ static ssize_t ff_write_proc(struct file *file, const char __user *buffer,
 static int show_ff_state(struct seq_file *seq, void *v)
 {
 	/* Check ff_mfd, without mfd we cannot use flicker free */
-	seq_printf(seq, "%d\n", (mdss_backlight_enable && ff_mfd != NULL));
+	mutex_lock(&flicker_free_lock);
+	seq_printf(seq, "%d\n", ff_ctx && ff_ctx->enabled);
+	mutex_unlock(&flicker_free_lock);
 	return 0;
 }
 
@@ -198,7 +220,31 @@ static const struct file_operations proc_file_fops_state = {
 
 void mdss_fb_update_flicker_free_mfd(struct msm_fb_data_type *mfd)
 {
-	ff_mfd = mfd;
+	struct flicker_free_ctx *ctx;
+
+	mutex_lock(&flicker_free_lock);
+	if (!mfd) {
+		kfree(ff_ctx);
+		ff_ctx = NULL;
+		mutex_unlock(&flicker_free_lock);
+		return;
+	}
+	if (ff_ctx && ff_ctx->mfd == mfd) {
+		mutex_unlock(&flicker_free_lock);
+		return;
+	}
+
+	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
+	if (ctx) {
+		ctx->mfd = mfd;
+		ctx->pcc_config.version = mdp_pcc_v1_7;
+		ctx->pcc_config.block = MDP_LOGICAL_BLOCK_DISP_0;
+		ctx->dither_config.version = mdp_dither_v1_7;
+		ctx->dither_config.block = MDP_LOGICAL_BLOCK_DISP_0;
+		kfree(ff_ctx);
+		ff_ctx = ctx;
+	}
+	mutex_unlock(&flicker_free_lock);
 }
 
 void mdss_panel_set_elvss_off_threshold(int val)
@@ -208,36 +254,35 @@ void mdss_panel_set_elvss_off_threshold(int val)
 
 static int __init mdss_fb_flicker_free_init(void)
 {
-	struct proc_dir_entry *root_entry, *node;
-
-	/* Display config init */
-	memset(&pcc_config, 0, sizeof(struct mdp_pcc_cfg_data));
-
-	pcc_config.version = mdp_pcc_v1_7;
-	pcc_config.block = MDP_LOGICAL_BLOCK_DISP_0;
-	payload = kzalloc(sizeof(struct mdp_pcc_data_v1_7),GFP_USER);
-
-	memset(&dither_config, 0, sizeof(struct mdp_dither_cfg_data));
-
-	dither_config.version = mdp_dither_v1_7;
-	dither_config.block = MDP_LOGICAL_BLOCK_DISP_0;
-	dither_payload = kzalloc(sizeof(struct mdp_dither_data_v1_7), GFP_USER);
+	struct proc_dir_entry *node;
 
 	/* File operations init */
-	root_entry = proc_mkdir("flicker_free", NULL);
+	ff_proc_root = proc_mkdir("flicker_free", NULL);
+	if (!ff_proc_root)
+		return -ENOMEM;
 
-	node = proc_create("flicker_free", 0666, root_entry,
+	node = proc_create("flicker_free", 0666, ff_proc_root,
 					&proc_file_fops_state);
 	if (!node)
-		goto free_payload;
+		goto remove_proc;
 
 	return 0;
 
-free_payload:
-	kfree(payload);
-	kfree(dither_payload);
+remove_proc:
+	remove_proc_subtree("flicker_free", NULL);
+	ff_proc_root = NULL;
 
 	pr_err("mdss_fb: Failed to initialize flicker free driver\n");
 	return -ENOMEM;
 }
 late_initcall(mdss_fb_flicker_free_init);
+
+static void __exit mdss_fb_flicker_free_exit(void)
+{
+	remove_proc_subtree("flicker_free", NULL);
+	mutex_lock(&flicker_free_lock);
+	kfree(ff_ctx);
+	ff_ctx = NULL;
+	mutex_unlock(&flicker_free_lock);
+}
+module_exit(mdss_fb_flicker_free_exit);
