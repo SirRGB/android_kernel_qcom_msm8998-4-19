@@ -1,0 +1,7 @@
+OnePlus fingerprint sensor detection
+
+Required properties:
+- compatible: Must be "oneplus,fpdetect".
+
+The driver exposes a read-only sensor_version attribute in the platform
+device's sysfs directory.

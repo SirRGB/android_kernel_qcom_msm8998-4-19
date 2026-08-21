@@ -1,0 +1,11 @@
+OnePlus FPC1020 fingerprint sensor
+
+Required properties:
+- compatible: Must be "fpc,fpc1020".
+- fpc,irq-gpio: GPIO connected to the sensor interrupt.
+- fpc,enable-gpio: GPIO used to enable the sensor.
+
+The interrupt-parent and interrupts properties describe the same sensor
+interrupt.  The established board node also supplies reset and enable
+pinctrl states, a vdd_ana supply, and the fpc,enable-on-boot and
+fpc,enable-wakeup flags.
