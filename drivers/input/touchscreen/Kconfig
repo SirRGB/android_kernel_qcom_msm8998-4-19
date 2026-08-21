@@ -1338,6 +1338,14 @@ config TOUCHSCREEN_SYNAPTICS_DSX
 
 source "drivers/input/touchscreen/synaptics_dsx/Kconfig"
 
+config TOUCHSCREEN_SYNAPTICS_S3320_I2C_RMI
+	bool "Synaptics S3320 I2C touchscreen"
+	depends on I2C && ARCH_ONEPLUS_MSM8998
+	help
+	  Say Y here if you have a Synaptics S3320 touchscreen.
+
+	  If unsure, say N.
+
 config TOUCHSCREEN_SYNAPTICS_TCM
 	bool "Synaptics TCM Touchscreen Driver"
 	depends on I2C
