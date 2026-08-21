@@ -35,6 +35,7 @@
 			status = "okay";
 		};
 	};
+
 };
 
 /* Move start address +4M to match modem aligned */
@@ -231,6 +232,30 @@
 	status = "disabled";
 };
 
+/* Storage */
+&ufsphy1 {
+	vdda-phy-supply = <&pm8998_l1>;
+	vdda-pll-supply = <&pm8998_l2>;
+	vddp-ref-clk-supply = <&pm8998_l26>;
+	vdda-phy-max-microamp = <51400>;
+	vdda-pll-max-microamp = <14600>;
+	vddp-ref-clk-max-microamp = <100>;
+	vddp-ref-clk-always-on;
+	status = "okay";
+};
+
+&ufs1 {
+	vdd-hba-supply = <&gdsc_ufs>;
+	vdd-hba-fixed-regulator;
+	vcc-supply = <&pm8998_l20>;
+	vccq-supply = <&pm8998_l26>;
+	vccq2-supply = <&pm8998_s4>;
+	vcc-max-microamp = <750000>;
+	vccq-max-microamp = <560000>;
+	vccq2-max-microamp = <750000>;
+	status = "okay";
+};
+
 &pmi8998_haptics {
 	status = "okay";
 	qcom,wave-shape = "sine";
@@ -274,45 +299,6 @@
 			qcom,rgb-sync;
 		};
 	};
-};
-
-&red_led {
-	qcom,use-blink;
-	qcom,duty-pcts = [00 05 0a 0f 14 1d 28 32 3c 4b 64];
-	qcom,duty-ms = <20>;
-	qcom,start-idx = <1>;
-	qcom,idx-len = <11>;
-	qcom,lut-flags = <0x1f>;
-	qcom,ramp-step-ms = <100>;
-	qcom,pause-lo = <2000>;
-	qcom,pause-hi = <1000>;
-	/delete-property/ linux,default-trigger;
-};
-
-&green_led {
-	qcom,use-blink;
-	qcom,duty-pcts = [00 05 0a 0f 14 1d 28 32 3c 4b 64];
-	qcom,duty-ms = <20>;
-	qcom,start-idx = <13>;
-	qcom,idx-len = <11>;
-	qcom,lut-flags = <0x1f>;
-	qcom,ramp-step-ms = <100>;
-	qcom,pause-lo = <2000>;
-	qcom,pause-hi = <1000>;
-	/delete-property/ linux,default-trigger;
-};
-
-&blue_led {
-	qcom,use-blink;
-	qcom,duty-pcts = [00 05 0a 0f 14 1d 28 32 3c 4b 64];
-	qcom,duty-ms = <20>;
-	qcom,start-idx = <13>;
-	qcom,idx-len = <11>;
-	qcom,lut-flags = <0x1f>;
-	qcom,ramp-step-ms = <100>;
-	qcom,pause-lo = <2000>;
-	qcom,pause-hi = <1000>;
-	/delete-property/ linux,default-trigger;
 };
 
 /* Charging */
@@ -455,9 +441,6 @@
 				&ap_clk_suspend>;
 		pinctrl-2 = <&ap_data_active>;
 		pinctrl-3 = <&ap_data_suspend>;
-		clocks = <&clock_rpmcc UART_SNOC_MSMBUS_A_CLK>,
-			<&clock_rpmcc UART_CNOC_MSMBUS_A_CLK>;
-		clock-names = "snoc", "cnoc";
 	};
 };
 
@@ -508,7 +491,8 @@
 
 /* Display */
 &i2c_5 {
-	/delete-node/ synaptics@20;
+	status = "okay";
+	qcom,disable-dma;
 
 	synaptics-rmi-ts@20 {
 		status = "disabled";
@@ -783,7 +767,7 @@
 };
 
 &i2c_6 { /* BLSP1 QUP6 (NFC) */
-	/delete-node/ nq@28;
+	status = "okay";
 
 	pn5xx@28 {
 		compatible = "nxp,pn547";
@@ -808,6 +792,7 @@
 };
 
 &uartblsp2dm1 {
+	status = "disabled";
 	pinctrl-names = "uart_active", "uart_deactive";
 	pinctrl-0 = <&uart_console_active>;
 	pinctrl-1 = <&uart_console_deactive>;
