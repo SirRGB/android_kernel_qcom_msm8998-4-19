@@ -1,0 +1,17 @@
+TI BQ27541 compatible fuel gauge
+
+Required properties:
+- compatible: must be "ti,bq27541-battery"
+- reg: I2C slave address
+
+Optional properties:
+- modify-soc-smooth: allow the driver to program the BQ27411-compatible
+  state-of-charge smoothing parameters
+
+Example:
+
+	fuel-gauge@55 {
+		compatible = "ti,bq27541-battery";
+		reg = <0x55>;
+		modify-soc-smooth;
+	};

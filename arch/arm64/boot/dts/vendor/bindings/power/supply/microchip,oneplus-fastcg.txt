@@ -1,0 +1,16 @@
+OnePlus DASH fast-charge microcontroller
+
+Required properties:
+- compatible: must be "microchip,oneplus_fastcg"
+- reg: I2C slave address
+- microchip,mcu-en-gpio: MCU enable GPIO
+- microchip,usb-sw-1-gpio, microchip,usb-sw-2-gpio: USB path switch GPIOs
+- microchip,ap-clk: application-processor clock GPIO
+- microchip,ap-data: application-processor data and MCU interrupt GPIO
+- pinctrl-names: must contain "mux_fastchg_active",
+  "mux_fastchg_suspend", "mcu_data_active", and "mcu_data_suspend"
+- pinctrl-0 through pinctrl-3: states corresponding to pinctrl-names
+
+The driver obtains SNOC and CNOC update clocks from the MSM8998 RPM clock
+controller.  They are intentionally not represented as consumer clocks in
+the OnePlus board device tree.

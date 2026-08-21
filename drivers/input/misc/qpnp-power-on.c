@@ -22,6 +22,7 @@
 #include <linux/slab.h>
 #include <linux/spmi.h>
 #include <linux/input/qpnp-power-on.h>
+#include <linux/power/oem_external_fg.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/of_regulator.h>
@@ -227,6 +228,37 @@ struct qpnp_pon {
 	bool			resin_pon_reset;
 	ktime_t			kpdpwr_last_release_time;
 	bool			log_kpd_event;
+	bool			soc_provider_registered;
+};
+
+#define ONEPLUS_SOC_DATA_REG	0x088d
+
+static int qpnp_pon_soc_read(void *ctx, u16 addr, u8 *val)
+{
+	struct qpnp_pon *pon = ctx;
+	unsigned int temp;
+	int rc;
+
+	if (addr != ONEPLUS_SOC_DATA_REG)
+		return -EPERM;
+	rc = regmap_read(pon->regmap, addr, &temp);
+	if (!rc)
+		*val = temp;
+	return rc;
+}
+
+static int qpnp_pon_soc_masked_write(void *ctx, u16 addr, u8 mask, u8 val)
+{
+	struct qpnp_pon *pon = ctx;
+
+	if (addr != ONEPLUS_SOC_DATA_REG)
+		return -EPERM;
+	return regmap_update_bits(pon->regmap, addr, mask, val);
+}
+
+static const struct oem_pon_soc_ops qpnp_pon_soc_ops = {
+	.read = qpnp_pon_soc_read,
+	.masked_write = qpnp_pon_soc_masked_write,
 };
 
 static int pon_ship_mode_en;
@@ -2399,6 +2431,29 @@ static int qpnp_pon_probe(struct platform_device *pdev)
 
 	qpnp_pon_debugfs_init(pon);
 
+#ifdef CONFIG_ARCH_ONEPLUS_MSM8998
+	if (sys_reset && pon->base == 0x800) {
+		rc = oem_pon_soc_register(&qpnp_pon_soc_ops, pon);
+		if (rc) {
+			qpnp_pon_debugfs_remove(pon);
+			if (pon->is_spon) {
+				spin_lock_irqsave(&spon_list_slock, flags);
+				list_del(&pon->list);
+				spin_unlock_irqrestore(&spon_list_slock,
+					flags);
+				pon->is_spon = false;
+			}
+			if (sys_reset_dev == pon)
+				sys_reset_dev = NULL;
+			if (modem_reset_dev == pon)
+				modem_reset_dev = NULL;
+			device_remove_file(dev, &dev_attr_debounce_us);
+			return rc;
+		}
+		pon->soc_provider_registered = true;
+	}
+#endif
+
 	return 0;
 }
 
@@ -2406,6 +2461,11 @@ static int qpnp_pon_remove(struct platform_device *pdev)
 {
 	struct qpnp_pon *pon = platform_get_drvdata(pdev);
 	unsigned long flags;
+
+	if (pon->soc_provider_registered) {
+		oem_pon_soc_unregister(pon);
+		pon->soc_provider_registered = false;
+	}
 
 	device_remove_file(&pdev->dev, &dev_attr_debounce_us);
 
