@@ -1,6 +1,6 @@
 config NFC_PN547
 	bool "NXP PN547 NFC Controller Driver"
-	depends on I2C
+	depends on I2C && ARCH_ONEPLUS_MSM8998
 	default n
 	help
 	  NXP PN547 Near Field Communication controller support.
@@ -10,10 +10,9 @@ config NFC_PN547
 
 config NFC_PN547_PMC_CLK_REQ
 	bool "NXP PN547 NFC Controller Driver"
-	depends on I2C
+	depends on NFC_PN547 && ARCH_ONEPLUS_MSM8998
 	default n
 	help
 	  PM8941 Clock request for NXP PN547 Near Field
 	  Communication controller support.
 	  This option enables d1 clock for NFC.
-

@@ -1,0 +1,38 @@
+NXP PN547 NFC controller
+
+Required properties:
+- compatible: Must be "nxp,pn547".
+- reg: I2C slave address. The driver probes addresses 0x28 through 0x2b.
+- interrupts: Rising-edge interrupt generated when receive data is ready.
+- nxp,irq_gpio: GPIO connected to the interrupt output.
+- nxp,ven: GPIO connected to the enable input.
+- nxp,dwld_en: GPIO selecting firmware-download mode.
+- nxp,clk_req: GPIO carrying the controller clock request.
+- nxp,pvdd_en: GPIO controlling the NFC PVDD enable.
+- clocks: Reference to the NFC reference clock.
+- clock-names: Must contain "nfc_clk".
+- pinctrl-names: Must contain "pn547-active" and "pn547-inactive".
+- pinctrl-0: Active pin configuration.
+- pinctrl-1: Inactive pin configuration.
+
+Optional properties:
+- nxp,dev_name: Misc-device name. Defaults to "pn54x".
+- nxp,use_pn544: Apply the PN544 bad-frame receive retry behavior.
+
+Example:
+	pn5xx@28 {
+		compatible = "nxp,pn547";
+		reg = <0x28>;
+		interrupts = <92 0>;
+		nxp,irq_gpio = <&tlmm 92 0>;
+		nxp,ven = <&tlmm 12 0>;
+		nxp,dwld_en = <&tlmm 93 0>;
+		nxp,clk_req = <&pm8998_gpios 21 0>;
+		nxp,pvdd_en = <&tlmm 37 0>;
+		clocks = <&clock_rpmcc RPM_SMD_LN_BB_CLK3_PIN>;
+		clock-names = "nfc_clk";
+		pinctrl-names = "pn547-active", "pn547-inactive";
+		pinctrl-0 = <&nfc_int_active &nfc_enable_active
+			     &nfc_clk_default>;
+		pinctrl-1 = <&nfc_int_suspend &nfc_enable_suspend>;
+	};
