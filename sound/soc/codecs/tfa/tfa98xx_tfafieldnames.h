@@ -87,4 +87,3 @@ typedef struct TfaIrqName {
 #define TFA1_BF_IESPKS -1
 #define TFA1_BF_ISTSPKS -1
 #define TFA1_BF_IPOSPKS -1
-

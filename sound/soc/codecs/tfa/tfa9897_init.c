@@ -70,9 +70,9 @@ static enum Tfa98xx_Error tfa9897_dsp_write_vsfwdelay_table(Tfa98xx_handle_t han
 {
 	enum Tfa98xx_Error error;
         error = tfa_dsp_cmd_id_write(handle, MODULE_FRAMEWORK,
-        		             TFA1_FW_PAR_ID_SET_CURRENT_DELAY,
-        		             sizeof(vsfwdelay_table),
-		    		     vsfwdelay_table);
+				     TFA1_FW_PAR_ID_SET_CURRENT_DELAY,
+				     sizeof(vsfwdelay_table),
+				     vsfwdelay_table);
         return error;
 }
 
@@ -96,9 +96,9 @@ enum Tfa98xx_Error tfa9897_dsp_write_cvfracdelay_table(Tfa98xx_handle_t handle)
 {
 	enum Tfa98xx_Error error;
         error = tfa_dsp_cmd_id_write(handle, MODULE_FRAMEWORK,
-        		             TFA1_FW_PAR_ID_SET_CURFRAC_DELAY,
-        		             sizeof(cvfracdelay_table),
-		    		     cvfracdelay_table);
+				     TFA1_FW_PAR_ID_SET_CURFRAC_DELAY,
+				     sizeof(cvfracdelay_table),
+				     cvfracdelay_table);
         return error;
 }
 

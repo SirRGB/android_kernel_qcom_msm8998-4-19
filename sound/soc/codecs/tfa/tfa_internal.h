@@ -111,4 +111,3 @@ TFA_INTERNAL int print_calibration(Tfa98xx_handle_t handle, char *str, size_t si
 TFA_INTERNAL int print_calibration_modify(Tfa98xx_handle_t handle, char *str, size_t size);
 
 #endif /* __TFA_INTERNAL_H__ */
-
