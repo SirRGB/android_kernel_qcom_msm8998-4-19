@@ -208,12 +208,12 @@ static bool dashchg_fw_check(struct fastchg_device_info *di)
 	for (i = 0; i < READ_COUNT; i++) {
 		rc = oneplus_dash_i2c_read(di->client, 0x03, 16,
 			&data_buf[0]);
-		if (rc < 0)
+		if (rc != 16)
 			goto i2c_err;
 		usleep_range(2000, 2001);
 		rc = oneplus_dash_i2c_read(di->client, 0x03, 16,
 			&data_buf[16]);
-		if (rc < 0)
+		if (rc != 16)
 			goto i2c_err;
 		addr = 0x8800 + i * 32;
 
@@ -278,17 +278,33 @@ static int dashchg_fw_write(struct fastchg_device_info *di,
 		}
 
 		/* write 16 bytes data to dashchg */
-		oneplus_dash_i2c_write(di->client,
-		0x02, BYTES_TO_WRITE, &data_buf[count+BYTE_OFFSET]);
-		oneplus_dash_i2c_write(di->client, 0x05, 1, &zero_buf[0]);
-		oneplus_dash_i2c_read(di->client, 0x05, 1, &temp_buf[0]);
+		rc = oneplus_dash_i2c_write(di->client, 0x02,
+			BYTES_TO_WRITE, &data_buf[count + BYTE_OFFSET]);
+		if (rc < 0)
+			return rc;
+		rc = oneplus_dash_i2c_write(di->client, 0x05, 1,
+			&zero_buf[0]);
+		if (rc < 0)
+			return rc;
+		rc = oneplus_dash_i2c_read(di->client, 0x05, 1,
+			&temp_buf[0]);
+		if (rc != 1)
+			return rc < 0 ? rc : -EIO;
 
 		/* write 16 bytes data to dashchg again */
-		oneplus_dash_i2c_write(di->client,
-		0x02, BYTES_TO_WRITE,
-		&data_buf[count+BYTE_OFFSET+BYTES_TO_WRITE]);
-		oneplus_dash_i2c_write(di->client, 0x05, 1, &zero_buf[0]);
-		oneplus_dash_i2c_read(di->client, 0x05, 1, &temp_buf[0]);
+		rc = oneplus_dash_i2c_write(di->client, 0x02,
+			BYTES_TO_WRITE,
+			&data_buf[count + BYTE_OFFSET + BYTES_TO_WRITE]);
+		if (rc < 0)
+			return rc;
+		rc = oneplus_dash_i2c_write(di->client, 0x05, 1,
+			&zero_buf[0]);
+		if (rc < 0)
+			return rc;
+		rc = oneplus_dash_i2c_read(di->client, 0x05, 1,
+			&temp_buf[0]);
+		if (rc != 1)
+			return rc < 0 ? rc : -EIO;
 
 		count = count + BYTE_OFFSET + 2 * BYTES_TO_WRITE;
 
@@ -361,9 +377,15 @@ update_fw:
 		}
 
 		/* erase data:0x10 words once */
-		oneplus_dash_i2c_write(di->client, 0x04, 1, &zero_buf[0]);
+		rc = oneplus_dash_i2c_write(di->client, 0x04, 1,
+			&zero_buf[0]);
+		if (rc < 0)
+			goto update_fw_err;
 		usleep_range(1000, 1001);
-		oneplus_dash_i2c_read(di->client, 0x04, 1, &temp_buf[0]);
+		rc = oneplus_dash_i2c_read(di->client, 0x04, 1,
+			&temp_buf[0]);
+		if (rc != 1)
+			goto update_fw_err;
 
 		/* erase data:0x10 words once */
 		addr = addr + 0x10;
@@ -371,7 +393,10 @@ update_fw:
 		addr_buf[1] = addr & 0xFF;
 	}
 	usleep_range(10000, 10001);
-	dashchg_fw_write(di, di->firmware_data, 0, di->firmware_size);
+	rc = dashchg_fw_write(di, di->firmware_data, 0,
+			di->firmware_size);
+	if (rc)
+		goto update_fw_err;
 
 	/* fw check begin:read data from mcu and compare*/
 	/*it with dashchg_firmware_data[] */
@@ -389,8 +414,12 @@ update_fw:
 
 	usleep_range(2000, 2001);
 	/* jump to app code begin */
-	oneplus_dash_i2c_write(di->client, 0x06, 1, &zero_buf[0]);
-	oneplus_dash_i2c_read(di->client, 0x06, 1, &temp_buf[0]);
+	rc = oneplus_dash_i2c_write(di->client, 0x06, 1, &zero_buf[0]);
+	if (rc < 0)
+		goto update_fw_err;
+	rc = oneplus_dash_i2c_read(di->client, 0x06, 1, &temp_buf[0]);
+	if (rc != 1)
+		goto update_fw_err;
 	/* jump to app code end */
 	di->firmware_already_updated = true;
 	reset_mcu_and_request_irq(di);
@@ -407,7 +436,7 @@ update_fw_err:
 	__pm_relax(di->fastchg_update_fireware_lock);
 	mutex_unlock(&di->firmware_lock);
 	mutex_unlock(&di->update_lock);
-	set_property_on_smbcharger(di, POWER_SUPPLY_PROP_SWITCH_DASH, true);
+	set_property_on_smbcharger(di, POWER_SUPPLY_PROP_SWITCH_DASH, false);
 	pr_err("result=fail\n");
 }
 
@@ -635,12 +664,16 @@ static void update_fireware_version_func(struct work_struct *work)
 			struct fastchg_device_info,
 			update_fireware_version_work.work);
 
-	if (!di->firmware_data || di->firmware_size < 4)
+	mutex_lock(&di->firmware_lock);
+	if (di->removed || !di->firmware_data || di->firmware_size < 4) {
+		mutex_unlock(&di->firmware_lock);
 		return;
+	}
 
-	snprintf(di->fw_id, 255, "0x%x",
+	snprintf(di->fw_id, sizeof(di->fw_id), "0x%x",
 	di->firmware_data[di->firmware_size - 4]);
-	snprintf(di->manu_name, 255, "%s", "ONEPLUS");
+	snprintf(di->manu_name, sizeof(di->manu_name), "%s", "ONEPLUS");
+	mutex_unlock(&di->firmware_lock);
 	//push_component_info(FAST_CHARGE, di->fw_id, di->manu_name);
 }
 static void di_watchdog(struct timer_list *timer)
@@ -761,6 +794,7 @@ static ssize_t dash_dev_read(struct file *filp, char __user *buf,
 			pr_err("failed to copy to user space\n");
 			return -EFAULT;
 		}
+		ret = 1;
 		break;
 	}
 	return ret;
@@ -1076,8 +1110,6 @@ static ssize_t dash_dev_write(struct file *filp, const char __user *buf,
 
 	if (READ_ONCE(di->removed))
 		return -ENODEV;
-	if (di->firmware_already_updated)
-		return 0;
 	if (!count || count > 34 * READ_COUNT || count % 34)
 		return -EINVAL;
 	firmware = memdup_user(buf, count);
@@ -1104,6 +1136,8 @@ static ssize_t dash_dev_write(struct file *filp, const char __user *buf,
 	di->firmware_data = firmware;
 	di->firmware_size = count;
 	di->dashchg_fw_ver_count = count;
+	di->firmware_already_updated = false;
+	schedule_delayed_work(&di->update_fireware_version_work, 0);
 	mutex_unlock(&di->firmware_lock);
 	mutex_unlock(&di->update_lock);
 	pr_info("fw_ver_count=%d\n", di->dashchg_fw_ver_count);

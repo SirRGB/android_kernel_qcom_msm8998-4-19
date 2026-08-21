@@ -38,6 +38,9 @@
 #define ONEPLUS_POLICY_VOTER		"ONEPLUS_POLICY_VOTER"
 #define ONEPLUS_UOVP_VOTER		"ONEPLUS_UOVP_VOTER"
 #define ONEPLUS_DASH_VOTER		"ONEPLUS_DASH_VOTER"
+#define ONEPLUS_BATT_OVP_VOTER		"ONEPLUS_BATT_OVP_VOTER"
+#define ONEPLUS_TERM_VOTER		"ONEPLUS_TERM_VOTER"
+#define ONEPLUS_TIMEOUT_VOTER		"ONEPLUS_TIMEOUT_VOTER"
 
 struct oneplus_smb2 {
 	struct smb_charger *chg;
@@ -239,6 +242,10 @@ static void oneplus_reset_session(struct oneplus_smb2 *op)
 	__pm_relax(op->dash_ws);
 	vote(op->chg->chg_disable_votable, ONEPLUS_DASH_VOTER, false, 0);
 	vote(op->chg->chg_disable_votable, ONEPLUS_UOVP_VOTER, false, 0);
+	vote(op->chg->chg_disable_votable, ONEPLUS_BATT_OVP_VOTER,
+		false, 0);
+	vote(op->chg->chg_disable_votable, ONEPLUS_TERM_VOTER, false, 0);
+	vote(op->chg->chg_disable_votable, ONEPLUS_TIMEOUT_VOTER, false, 0);
 	vote(op->chg->usb_icl_votable, ONEPLUS_UOVP_VOTER, false, 0);
 }
 
@@ -285,12 +292,12 @@ static void oneplus_policy_update(struct oneplus_smb2 *op)
 		oem_bq_get_battery_mvolts(4000) * 1000) / 1000;
 	if (vbat_mv > ONEPLUS_BATT_OVP_MV) {
 		op->batt_ovp = true;
-		vote(op->chg->chg_disable_votable, ONEPLUS_UOVP_VOTER,
+		vote(op->chg->chg_disable_votable, ONEPLUS_BATT_OVP_VOTER,
 			true, 0);
 	} else if (op->batt_ovp &&
 		vbat_mv < ONEPLUS_BATT_OVP_MV - ONEPLUS_CHG_HYST_MV) {
 		op->batt_ovp = false;
-		vote(op->chg->chg_disable_votable, ONEPLUS_UOVP_VOTER,
+		vote(op->chg->chg_disable_votable, ONEPLUS_BATT_OVP_VOTER,
 			false, 0);
 	}
 
@@ -304,7 +311,7 @@ static void oneplus_policy_update(struct oneplus_smb2 *op)
 			op->chg->chg_done = true;
 			op->term_count = 0;
 			vote(op->chg->chg_disable_votable,
-				ONEPLUS_POLICY_VOTER, true, 0);
+				ONEPLUS_TERM_VOTER, true, 0);
 		}
 	} else {
 		op->term_count = 0;
@@ -313,7 +320,7 @@ static void oneplus_policy_update(struct oneplus_smb2 *op)
 		vbat_mv <= op->vbatdet_mv[region]) {
 		op->chg->chg_done = false;
 		op->recharge = true;
-		vote(op->chg->chg_disable_votable, ONEPLUS_POLICY_VOTER,
+		vote(op->chg->chg_disable_votable, ONEPLUS_TERM_VOTER,
 			false, 0);
 	}
 
@@ -323,7 +330,7 @@ static void oneplus_policy_update(struct oneplus_smb2 *op)
 		op->heartbeat_count = 0;
 	if (op->heartbeat_count >= ONEPLUS_CHG_TIMEOUT_COUNT) {
 		op->time_out = true;
-		vote(op->chg->chg_disable_votable, ONEPLUS_POLICY_VOTER,
+		vote(op->chg->chg_disable_votable, ONEPLUS_TIMEOUT_VOTER,
 			true, 0);
 	}
 	oneplus_uovp(op);
@@ -770,7 +777,10 @@ int smb2_oneplus_batt_set_property(struct smb_charger *chg,
 	case POWER_SUPPLY_PROP_OTG_SWITCH:
 		return oneplus_set_otg_switch(op, !!val->intval);
 	case POWER_SUPPLY_PROP_SWITCH_DASH:
-		return oem_fastchg_set_fast_chg_allow(!!val->intval);
+		if (!val->intval)
+			return oem_fastchg_set_fast_chg_allow(false);
+		schedule_delayed_work(&op->retry_work, 0);
+		return 0;
 	case POWER_SUPPLY_PROP_NOTIFY_CHARGER_SET_PARAMETER:
 		smb2_oneplus_heartbeat(chg);
 		return 0;
