@@ -1,0 +1,17 @@
+OnePlus Goodix fingerprint sensor
+
+Required properties:
+- compatible: Must be "goodix,fingerprint".
+- interrupt-parent: GPIO interrupt controller.
+- fp-gpio-irq: GPIO connected to the sensor interrupt.
+- fp-gpio-reset: GPIO connected to the sensor reset input.
+- fp-gpio-enable: GPIO used by the fp_en_init and fp_dis_init states.
+- fp-gpio-turn-on: GPIO used to turn on the sensor.
+- pinctrl-names: Must include "fp_en_init", "fp_dis_init", and
+  "fp_enable".
+- pinctrl-0: Initial enable and interrupt pin states.
+- pinctrl-1: Initial disable pin state.
+- pinctrl-2: Sensor turn-on pin state.
+
+The OnePlus Dumpling node also carries the oem,dumpling flag used to select
+its pinctrl sequence.
