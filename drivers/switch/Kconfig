@@ -1,0 +1,5 @@
+config SWITCH
+	bool "Switch class support"
+	help
+	  Say Y here to enable the legacy Android switch class. This allows
+	  switch state monitoring from userspace through sysfs and uevents.
