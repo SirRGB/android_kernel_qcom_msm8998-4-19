@@ -1194,6 +1194,11 @@ ADRENO_TARGET(a512, ADRENO_REV_A512)
 ADRENO_TARGET(a530, ADRENO_REV_A530)
 ADRENO_TARGET(a540, ADRENO_REV_A540)
 
+static inline bool adreno_uses_legacy_scratch(struct adreno_device *adreno_dev)
+{
+	return adreno_is_a530(adreno_dev) || adreno_is_a540(adreno_dev);
+}
+
 static inline int adreno_is_a530v2(struct adreno_device *adreno_dev)
 {
 	return (ADRENO_GPUREV(adreno_dev) == ADRENO_REV_A530) &&

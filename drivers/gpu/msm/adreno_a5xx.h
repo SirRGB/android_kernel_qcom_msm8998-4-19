@@ -139,7 +139,7 @@ void a5xx_hwcg_set(struct adreno_device *adreno_dev, bool on);
 
 static inline u32 a5xx_cp_rb_cntl(struct adreno_device *adreno_dev)
 {
-	if (adreno_is_a530(adreno_dev) || adreno_is_a540(adreno_dev))
+	if (adreno_uses_legacy_scratch(adreno_dev))
 		return A5XX_CP_RB_CNTL_DEFAULT & ~BIT(27);
 
 	return A5XX_CP_RB_CNTL_DEFAULT;

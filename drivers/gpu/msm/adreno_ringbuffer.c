@@ -225,6 +225,7 @@ int adreno_ringbuffer_submit_spin(struct adreno_ringbuffer *rb,
 
 	/* GPUs which support APRIV feature doesn't require a WHERE_AM_I */
 	if (ADRENO_FEATURE(adreno_dev, ADRENO_APRIV) ||
+			adreno_uses_legacy_scratch(adreno_dev) ||
 			adreno_is_a3xx(adreno_dev))
 		return adreno_ringbuffer_submit_spin_nosync(rb, time, timeout);
 
@@ -370,7 +371,7 @@ int adreno_ringbuffer_probe(struct adreno_device *adreno_dev)
 		unsigned int priv =
 			KGSL_MEMDESC_RANDOM | KGSL_MEMDESC_PRIVILEGED;
 
-		if (adreno_is_a530(adreno_dev) || adreno_is_a540(adreno_dev))
+		if (adreno_uses_legacy_scratch(adreno_dev))
 			priv &= ~KGSL_MEMDESC_PRIVILEGED;
 
 		status = kgsl_allocate_global(device, &device->scratch,
@@ -575,6 +576,7 @@ adreno_ringbuffer_addcmds(struct adreno_ringbuffer *rb,
 			adreno_is_preemption_enabled(adreno_dev))
 		total_sizedwords += 10;
 	else if (!adreno_is_a3xx(adreno_dev) &&
+			!adreno_uses_legacy_scratch(adreno_dev) &&
 			!ADRENO_FEATURE(adreno_dev, ADRENO_APRIV))
 		total_sizedwords += 3;
 
@@ -784,6 +786,7 @@ adreno_ringbuffer_addcmds(struct adreno_ringbuffer *rb,
 		ringcmds += gpudev->preemption_post_ibsubmit(adreno_dev,
 			ringcmds);
 	else if (!adreno_is_a3xx(adreno_dev) &&
+			!adreno_uses_legacy_scratch(adreno_dev) &&
 			!ADRENO_FEATURE(adreno_dev, ADRENO_APRIV)) {
 		*ringcmds++ = cp_packet(adreno_dev, CP_WHERE_AM_I, 2);
 		ringcmds += cp_gpuaddr(adreno_dev, ringcmds,
