@@ -1024,7 +1024,7 @@ config QCOM_EDL_900E_ENTRY
 	help
 	  Register a one-shot softirq at softirq_init(), then arm it when the
 	  QCOM restart driver has installed the panic and emergency-download
-	  paths. After a fixed one minute delay it crashes from softirq context
+	  paths. After a fixed two-minute delay it crashes from softirq context
 	  by dereferencing a global object that was freed without being cleared.
 	  Because a fault in softirq context is in_interrupt(), the kernel forces
 	  a panic regardless of panic_on_oops; the QCOM panic path then arms the
