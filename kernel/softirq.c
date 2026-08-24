@@ -644,14 +644,15 @@ EXPORT_SYMBOL_GPL(tasklet_hrtimer_init);
 /*
  * Controlled QCOM EDL (900E) entry.
  *
- * A bring-up recovery aid: work queued at softirq_init() waits for a fixed one
- * minute in short uninterruptible sleeps, then raises a one-shot softirq that
- * crashes by dereferencing a global object that was freed without being
- * cleared. Each sleep returns through the scheduler so the worker continues
- * to make progress for hung-task accounting. A fault in softirq context is
- * in_interrupt(), so the kernel forces a panic regardless of panic_on_oops;
- * the QCOM panic path then arms the download-mode cookie and warm-resets into
- * Emergency Download mode, which enumerates as Qualcomm USB PID 900E.
+ * A bring-up recovery aid: a one-shot softirq is registered at softirq_init(),
+ * then work is queued once the QCOM restart driver has installed the panic and
+ * emergency-download paths. The worker waits for a fixed one minute in short
+ * uninterruptible sleeps before raising the softirq. Each sleep returns
+ * through the scheduler so the worker continues to make progress for
+ * hung-task accounting. A fault in softirq context is in_interrupt(), so the
+ * kernel forces a panic regardless of panic_on_oops; the QCOM panic path then
+ * arms the download-mode cookie and warm-resets into Emergency Download mode,
+ * which enumerates as Qualcomm USB PID 900E.
  *
  * The only purpose is to escape an init boot loop: a bring-up build that
  * cannot finish init drops into EDL after the delay so it can be reflashed
@@ -725,15 +726,19 @@ static void edl_900e_work_fn(struct work_struct *unused)
 
 static DECLARE_WORK(edl_900e_work, edl_900e_work_fn);
 
-static void __init edl_900e_init(void)
+static void __init edl_900e_register(void)
 {
 	open_softirq(QCOM_EDL_900E_SOFTIRQ, edl_900e_action);
+}
+
+void qcom_edl_900e_arm(void)
+{
 	queue_work(system_unbound_wq, &edl_900e_work);
 	pr_warn("qcom-edl-900e: controlled EDL entry armed, firing in %lu ms\n",
 		(unsigned long)EDL_900E_DELAY_MS);
 }
 #else
-static inline void __init edl_900e_init(void) { }
+static inline void __init edl_900e_register(void) { }
 #endif /* CONFIG_QCOM_EDL_900E_ENTRY */
 
 void __init softirq_init(void)
@@ -750,7 +755,7 @@ void __init softirq_init(void)
 	open_softirq(TASKLET_SOFTIRQ, tasklet_action);
 	open_softirq(HI_SOFTIRQ, tasklet_hi_action);
 
-	edl_900e_init();
+	edl_900e_register();
 }
 
 static int ksoftirqd_should_run(unsigned int cpu)
