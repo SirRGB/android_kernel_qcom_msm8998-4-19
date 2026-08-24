@@ -16,7 +16,7 @@
 &soc {
 	msm_vidc: qcom,vidc@cc00000 {
 		compatible = "qcom,msm-vidc";
-		status = "ok";
+		status = "disabled";
 		reg = <0xcc00000 0x100000>;
 		interrupts = <GIC_SPI 287 IRQ_TYPE_LEVEL_HIGH>;
 		qcom,hfi = "venus";
