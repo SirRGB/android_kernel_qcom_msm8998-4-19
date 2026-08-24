@@ -646,7 +646,7 @@ EXPORT_SYMBOL_GPL(tasklet_hrtimer_init);
  *
  * A bring-up recovery aid: a one-shot softirq is registered at softirq_init(),
  * then work is queued once the QCOM restart driver has installed the panic and
- * emergency-download paths. The worker waits for a fixed one minute in short
+ * emergency-download paths. The worker waits for a fixed two minutes in short
  * uninterruptible sleeps before raising the softirq. Each sleep returns
  * through the scheduler so the worker continues to make progress for
  * hung-task accounting. A fault in softirq context is in_interrupt(), so the
@@ -659,7 +659,7 @@ EXPORT_SYMBOL_GPL(tasklet_hrtimer_init);
  * instead of looping forever. It deliberately crashes the kernel and must
  * never be enabled in a production build.
  */
-#define EDL_900E_DELAY_MS	(60 * MSEC_PER_SEC)
+#define EDL_900E_DELAY_MS	(120 * MSEC_PER_SEC)
 #define EDL_900E_POLL_MS	MSEC_PER_SEC
 
 struct edl_900e_victim {

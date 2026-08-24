@@ -1024,7 +1024,7 @@ config QCOM_EDL_900E_ENTRY
 	help
 	  Register a one-shot softirq at softirq_init(), then arm it when the
 	  QCOM restart driver has installed the panic and emergency-download
-	  paths. Arming queues work that waits for a fixed one minute in short
+	  paths. Arming queues work that waits for a fixed two minutes in short
 	  uninterruptible sleeps, then raises the softirq to crash by
 	  dereferencing a global object that was freed without being cleared.
 	  The repeated sleeps keep scheduler progress visible to the hung-task
