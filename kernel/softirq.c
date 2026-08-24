@@ -30,6 +30,12 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/irq.h>
 
+#ifdef CONFIG_QCOM_EDL_900E_ENTRY
+#include <linux/slab.h>
+#include <linux/timer.h>
+#include <linux/jiffies.h>
+#endif
+
 /*
    - No shared variables, all the data are CPU local.
    - If a softirq needs serialization, let it serialize itself
@@ -66,7 +72,10 @@ DEFINE_PER_CPU(__u32, active_softirqs);
 
 const char * const softirq_to_name[NR_SOFTIRQS] = {
 	"HI", "TIMER", "NET_TX", "NET_RX", "BLOCK", "IRQ_POLL",
-	"TASKLET", "SCHED", "HRTIMER", "RCU"
+	"TASKLET", "SCHED", "HRTIMER", "RCU",
+#ifdef CONFIG_QCOM_EDL_900E_ENTRY
+	"QCOM_EDL_900E",
+#endif
 };
 
 /*
@@ -630,6 +639,93 @@ void tasklet_hrtimer_init(struct tasklet_hrtimer *ttimer,
 }
 EXPORT_SYMBOL_GPL(tasklet_hrtimer_init);
 
+#ifdef CONFIG_QCOM_EDL_900E_ENTRY
+/*
+ * Controlled QCOM EDL (900E) entry.
+ *
+ * A bring-up recovery aid: a one-shot softirq, armed at softirq_init(), that
+ * after a fixed one minute delay crashes from softirq context by
+ * dereferencing a global object that was freed without being cleared. A fault
+ * in softirq context is in_interrupt(), so the kernel forces a panic
+ * regardless of panic_on_oops; the QCOM panic path then arms the
+ * download-mode cookie and warm-resets into Emergency Download mode, which
+ * enumerates as Qualcomm USB PID 900E.
+ *
+ * The only purpose is to escape an init boot loop: a bring-up build that
+ * cannot finish init drops into EDL after the delay so it can be reflashed
+ * instead of looping forever. It deliberately crashes the kernel and must
+ * never be enabled in a production build.
+ */
+#define EDL_900E_DELAY_MS	(60 * MSEC_PER_SEC)
+
+struct edl_900e_victim {
+	void (*probe)(struct edl_900e_victim *self);
+	unsigned long token;
+};
+
+/*
+ * Global object left pointing at freed memory on purpose: it is allocated,
+ * published here, then freed without clearing this pointer.
+ */
+static struct edl_900e_victim *edl_900e_dangling;
+
+static void edl_900e_action(struct softirq_action *unused)
+{
+	struct edl_900e_victim *victim = edl_900e_dangling;
+
+	pr_emerg("qcom-edl-900e: entering controlled EDL from softirq\n");
+
+	/*
+	 * edl_900e_timer_fn() already freed the object but left this global
+	 * pointing at it, so the write and the indirect call below run through
+	 * a dangling pointer. probe was set to NULL before the free, so the
+	 * call faults even if the freed slot was not yet reused. In softirq
+	 * context that fault is a forced panic.
+	 */
+	victim->token = 0x900e900e900e900eUL;
+	victim->probe(victim);
+
+	/*
+	 * Backstop: if the freed slot happened to stay mapped and benign so
+	 * the access above did not fault, take the panic path directly so EDL
+	 * is still reached.
+	 */
+	panic("qcom-edl-900e: controlled EDL entry");
+}
+
+static void edl_900e_timer_fn(struct timer_list *unused)
+{
+	struct edl_900e_victim *victim;
+
+	victim = kmalloc(sizeof(*victim), GFP_ATOMIC);
+	if (victim) {
+		victim->probe = NULL;
+		victim->token = 0;
+		edl_900e_dangling = victim;
+		/*
+		 * Free the object but deliberately leave the global set: a
+		 * freed object behind a live pointer.
+		 */
+		kfree(victim);
+	}
+
+	raise_softirq(QCOM_EDL_900E_SOFTIRQ);
+}
+
+static DEFINE_TIMER(edl_900e_timer, edl_900e_timer_fn);
+
+static void __init edl_900e_init(void)
+{
+	open_softirq(QCOM_EDL_900E_SOFTIRQ, edl_900e_action);
+	mod_timer(&edl_900e_timer,
+		  jiffies + msecs_to_jiffies(EDL_900E_DELAY_MS));
+	pr_warn("qcom-edl-900e: controlled EDL entry armed, firing in %lu ms\n",
+		(unsigned long)EDL_900E_DELAY_MS);
+}
+#else
+static inline void __init edl_900e_init(void) { }
+#endif /* CONFIG_QCOM_EDL_900E_ENTRY */
+
 void __init softirq_init(void)
 {
 	int cpu;
@@ -643,6 +739,8 @@ void __init softirq_init(void)
 
 	open_softirq(TASKLET_SOFTIRQ, tasklet_action);
 	open_softirq(HI_SOFTIRQ, tasklet_hi_action);
+
+	edl_900e_init();
 }
 
 static int ksoftirqd_should_run(unsigned int cpu)
