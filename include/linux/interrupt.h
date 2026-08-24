@@ -480,6 +480,12 @@ enum
 	NR_SOFTIRQS
 };
 
+#ifdef CONFIG_QCOM_EDL_900E_ENTRY
+void qcom_edl_900e_arm(void);
+#else
+static inline void qcom_edl_900e_arm(void) { }
+#endif
+
 #define SOFTIRQ_STOP_IDLE_MASK (~(1 << RCU_SOFTIRQ))
 /* Softirq's where the handling might be long: */
 #define LONG_SOFTIRQ_MASK ((1 << NET_TX_SOFTIRQ)       | \
