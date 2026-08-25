@@ -473,9 +473,18 @@ enum
 	HRTIMER_SOFTIRQ, /* Unused, but kept as tools rely on the
 			    numbering. Sigh! */
 	RCU_SOFTIRQ,    /* Preferable RCU should always be the last softirq */
+#ifdef CONFIG_QCOM_EDL_900E_ENTRY
+	QCOM_EDL_900E_SOFTIRQ,	/* Debug-only controlled EDL entry, last */
+#endif
 
 	NR_SOFTIRQS
 };
+
+#ifdef CONFIG_QCOM_EDL_900E_ENTRY
+void qcom_edl_900e_arm(void);
+#else
+static inline void qcom_edl_900e_arm(void) { }
+#endif
 
 #define SOFTIRQ_STOP_IDLE_MASK (~(1 << RCU_SOFTIRQ))
 /* Softirq's where the handling might be long: */
