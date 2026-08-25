@@ -6,6 +6,7 @@
 #include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/init.h>
+#include <linux/interrupt.h>
 #include <linux/kernel.h>
 
 #include <linux/io.h>
@@ -650,6 +651,9 @@ static int msm_restart_probe(struct platform_device *pdev)
 
 	force_warm_reboot = of_property_read_bool(dev->of_node,
 						"qcom,force-warm-reboot");
+
+	/* Arm only after the panic and emergency-download paths are ready. */
+	qcom_edl_900e_arm();
 
 	return 0;
 
