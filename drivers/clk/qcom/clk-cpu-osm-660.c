@@ -35,6 +35,16 @@
 #include "clk-rcg.h"
 #include "clk-debug.h"
 
+#ifdef CONFIG_QCOM_EDL_900E_ENTRY
+#define OSM_BOOT_MARKER(dev, phase, state) \
+	dev_info(dev, "OSM boot: %s %s\n", phase, state)
+#define OSM_BOOT_CPU_MARKER(dev, phase, cpu, state) \
+	dev_info(dev, "OSM boot: %s cpu%d %s\n", phase, cpu, state)
+#else
+#define OSM_BOOT_MARKER(dev, phase, state) do { } while (0)
+#define OSM_BOOT_CPU_MARKER(dev, phase, cpu, state) do { } while (0)
+#endif
+
 enum {
 	LMH_LITE_CLK_SRC,
 	P_XO,
@@ -2555,6 +2565,8 @@ static void populate_opp_table(struct platform_device *pdev)
 	struct device *cpu_dev;
 
 	for_each_possible_cpu(cpu) {
+		OSM_BOOT_CPU_MARKER(&pdev->dev, "opp_population", cpu,
+				    "begin");
 		if (logical_cpu_to_clk(cpu) == pwrcl_clk.hw.clk) {
 			cpu_dev = get_cpu_device(cpu);
 			if (cpu_dev)
@@ -2567,6 +2579,8 @@ static void populate_opp_table(struct platform_device *pdev)
 				WARN(add_opp(&perfcl_clk, cpu_dev),
 			     "Failed to add OPP levels for perf cluster\n");
 		}
+		OSM_BOOT_CPU_MARKER(&pdev->dev, "opp_population", cpu,
+				    "done");
 	}
 }
 
@@ -3187,6 +3201,7 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 		.get_cpu_cycle_counter = clk_osm_get_cpu_cycle_counter,
 	};
 
+	OSM_BOOT_MARKER(dev, "probe", "begin");
 	data = of_device_get_match_data(&pdev->dev);
 	if (!data)
 		return -EINVAL;
@@ -3252,12 +3267,14 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 	dev_info(&pdev->dev, "using pwrcl speed bin %u and pvs_ver %d\n",
 		 speedbin, pvs_ver);
 
+	OSM_BOOT_MARKER(dev, "pwrcl_lut", "begin");
 	rc = clk_osm_get_lut(pdev, &pwrcl_clk, pwrclspeedbinstr);
 	if (rc) {
 		dev_err(&pdev->dev, "Unable to get OSM LUT for power cluster, rc=%d\n",
 			rc);
 		return rc;
 	}
+	OSM_BOOT_MARKER(dev, "pwrcl_lut", "done");
 
 	if (perfcl_clk.vbases[EFUSE_BASE]) {
 		/* Multiple speed-bins are supported */
@@ -3271,13 +3288,16 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 	dev_info(&pdev->dev, "using perfcl speed bin %u and pvs_ver %d\n",
 		 speedbin, pvs_ver);
 
+	OSM_BOOT_MARKER(dev, "perfcl_lut", "begin");
 	rc = clk_osm_get_lut(pdev, &perfcl_clk, perfclspeedbinstr);
 	if (rc) {
 		dev_err(&pdev->dev, "Unable to get OSM LUT for perf cluster, rc=%d\n",
 			rc);
 		return rc;
 	}
+	OSM_BOOT_MARKER(dev, "perfcl_lut", "done");
 
+	OSM_BOOT_MARKER(dev, "pwrcl_voltage", "begin");
 	rc = clk_osm_resolve_open_loop_voltages(&pwrcl_clk);
 	if (rc) {
 		if (rc == -EPROBE_DEFER)
@@ -3286,7 +3306,9 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 			rc);
 		return rc;
 	}
+	OSM_BOOT_MARKER(dev, "pwrcl_voltage", "done");
 
+	OSM_BOOT_MARKER(dev, "perfcl_voltage", "begin");
 	rc = clk_osm_resolve_open_loop_voltages(&perfcl_clk);
 	if (rc) {
 		if (rc == -EPROBE_DEFER)
@@ -3295,84 +3317,125 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 			rc);
 		return rc;
 	}
+	OSM_BOOT_MARKER(dev, "perfcl_voltage", "done");
 
+	OSM_BOOT_MARKER(dev, "pwrcl_crossover", "begin");
 	rc = clk_osm_resolve_crossover_corners(&pwrcl_clk, pdev,
 					       data->pwrcl_crossover_property);
 	if (rc)
 		dev_info(&pdev->dev, "No APM crossover corner programmed\n");
+	OSM_BOOT_MARKER(dev, "pwrcl_crossover", "done");
 
+	OSM_BOOT_MARKER(dev, "perfcl_crossover", "begin");
 	rc = clk_osm_resolve_crossover_corners(&perfcl_clk, pdev,
 				"qcom,perfcl-apcs-mem-acc-threshold-voltage");
 	if (rc)
 		dev_info(&pdev->dev, "No MEM-ACC crossover corner programmed\n");
+	OSM_BOOT_MARKER(dev, "perfcl_crossover", "done");
 
+	OSM_BOOT_MARKER(dev, "cycle_counters", "begin");
 	clk_osm_setup_cycle_counters(&pwrcl_clk);
 	clk_osm_setup_cycle_counters(&perfcl_clk);
+	OSM_BOOT_MARKER(dev, "cycle_counters", "done");
 
 	clk_osm_print_osm_table(&pwrcl_clk);
 	clk_osm_print_osm_table(&perfcl_clk);
 
+	OSM_BOOT_MARKER(dev, "pwrcl_hw_table", "begin");
 	rc = clk_osm_setup_hw_table(&pwrcl_clk);
 	if (rc) {
 		dev_err(&pdev->dev, "failed to setup power cluster hardware table\n");
 		goto exit;
 	}
+	OSM_BOOT_MARKER(dev, "pwrcl_hw_table", "done");
+	OSM_BOOT_MARKER(dev, "perfcl_hw_table", "begin");
 	rc = clk_osm_setup_hw_table(&perfcl_clk);
 	if (rc) {
 		dev_err(&pdev->dev, "failed to setup perf cluster hardware table\n");
 		goto exit;
 	}
+	OSM_BOOT_MARKER(dev, "perfcl_hw_table", "done");
 
 	/* Policy tuning */
+	OSM_BOOT_MARKER(dev, "cc_policy", "begin");
 	rc = clk_osm_set_cc_policy(pdev);
 	if (rc < 0) {
 		dev_err(&pdev->dev, "cc policy setup failed\n");
 		goto exit;
 	}
+	OSM_BOOT_MARKER(dev, "cc_policy", "done");
 
 	/* LLM Freq Policy Tuning */
+	OSM_BOOT_MARKER(dev, "llm_freq_policy", "begin");
 	rc = clk_osm_set_llm_freq_policy(pdev);
 	if (rc < 0) {
 		dev_err(&pdev->dev, "LLM Frequency Policy setup failed\n");
 		goto exit;
 	}
+	OSM_BOOT_MARKER(dev, "llm_freq_policy", "done");
 
 	/* LLM Voltage Policy Tuning */
+	OSM_BOOT_MARKER(dev, "llm_volt_policy", "begin");
 	rc = clk_osm_set_llm_volt_policy(pdev);
 	if (rc < 0) {
 		dev_err(&pdev->dev, "Failed to set LLM voltage Policy\n");
 		goto exit;
 	}
+	OSM_BOOT_MARKER(dev, "llm_volt_policy", "done");
 
+	OSM_BOOT_MARKER(dev, "pwrcl_fsm", "begin");
 	clk_osm_setup_fsms(&pwrcl_clk);
+	OSM_BOOT_MARKER(dev, "pwrcl_fsm", "done");
+	OSM_BOOT_MARKER(dev, "perfcl_fsm", "begin");
 	clk_osm_setup_fsms(&perfcl_clk);
+	OSM_BOOT_MARKER(dev, "perfcl_fsm", "done");
 
 	/*
 	 * Perform typical secure-world HW initialization
 	 * as necessary.
 	 */
+	OSM_BOOT_MARKER(dev, "pwrcl_secure_setup", "begin");
 	clk_osm_do_additional_setup(&pwrcl_clk, pdev);
+	OSM_BOOT_MARKER(dev, "pwrcl_secure_setup", "done");
+	OSM_BOOT_MARKER(dev, "perfcl_secure_setup", "begin");
 	clk_osm_do_additional_setup(&perfcl_clk, pdev);
+	OSM_BOOT_MARKER(dev, "perfcl_secure_setup", "done");
 
 	/* MEM-ACC Programming */
+	OSM_BOOT_MARKER(dev, "pwrcl_mem_acc", "begin");
 	clk_osm_program_mem_acc_regs(&pwrcl_clk);
+	OSM_BOOT_MARKER(dev, "pwrcl_mem_acc", "done");
+	OSM_BOOT_MARKER(dev, "perfcl_mem_acc", "begin");
 	clk_osm_program_mem_acc_regs(&perfcl_clk);
+	OSM_BOOT_MARKER(dev, "perfcl_mem_acc", "done");
 
 	/* Program APM crossover corners */
+	OSM_BOOT_MARKER(dev, "pwrcl_apm", "begin");
 	clk_osm_apm_vc_setup(&pwrcl_clk);
+	OSM_BOOT_MARKER(dev, "pwrcl_apm", "done");
+	OSM_BOOT_MARKER(dev, "perfcl_apm", "begin");
 	clk_osm_apm_vc_setup(&perfcl_clk);
+	OSM_BOOT_MARKER(dev, "perfcl_apm", "done");
 
+	OSM_BOOT_MARKER(dev, "pwrcl_irq", "begin");
 	rc = clk_osm_setup_irq(pdev, &pwrcl_clk, "pwrcl-irq");
 	if (rc)
 		pr_err("Debug IRQ not set for pwrcl\n");
+	OSM_BOOT_MARKER(dev, "pwrcl_irq", "done");
 
+	OSM_BOOT_MARKER(dev, "perfcl_irq", "begin");
 	rc = clk_osm_setup_irq(pdev, &perfcl_clk, "perfcl-irq");
 	if (rc)
 		pr_err("Debug IRQ not set for perfcl\n");
+	OSM_BOOT_MARKER(dev, "perfcl_irq", "done");
 
 	if (of_property_read_bool(pdev->dev.of_node, "qcom,osm-pll-setup")) {
+		OSM_BOOT_MARKER(dev, "pwrcl_pll", "begin");
 		clk_osm_setup_cluster_pll(&pwrcl_clk);
+		OSM_BOOT_MARKER(dev, "pwrcl_pll", "done");
+		OSM_BOOT_MARKER(dev, "perfcl_pll", "begin");
 		clk_osm_setup_cluster_pll(&perfcl_clk);
+		OSM_BOOT_MARKER(dev, "perfcl_pll", "done");
 	}
 
 	spin_lock_init(&pwrcl_clk.lock);
@@ -3386,6 +3449,7 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 				       &perfcl_clk.panic_notifier);
 
 	/* Register OSM pwr and perf clocks with Clock Framework */
+	OSM_BOOT_MARKER(dev, "clock_registration", "begin");
 	for (i = 0; i < num_clks; i++) {
 		clk = devm_clk_register(&pdev->dev, osm_qcom_clk_hws[i]);
 		if (IS_ERR(clk)) {
@@ -3395,19 +3459,23 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 		}
 		clk_data->clks[i] = clk;
 	}
+	OSM_BOOT_MARKER(dev, "clock_registration", "done");
 
+	OSM_BOOT_MARKER(dev, "provider_registration", "begin");
 	rc = of_clk_add_provider(pdev->dev.of_node, of_clk_src_onecell_get,
 								clk_data);
 	if (rc) {
 		dev_err(&pdev->dev, "Unable to register CPU clocks\n");
 			goto exit;
 	}
+	OSM_BOOT_MARKER(dev, "provider_registration", "done");
 
 	/*
 	 * The hmss_gpll0 clock runs at 300 MHz. Ensure it is at the correct
 	 * frequency before enabling OSM. LUT index 0 is always sourced from
 	 * this clock.
 	 */
+	OSM_BOOT_MARKER(dev, "aux_rate", "begin");
 	rc = clk_set_rate(sys_apcsaux_clk_gcc.hw.clk, init_rate);
 	if (rc) {
 		dev_err(&pdev->dev, "Unable to set init rate on hmss_gpll0, rc=%d\n",
@@ -3415,60 +3483,82 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 		return rc;
 	}
 	clk_prepare_enable(sys_apcsaux_clk_gcc.hw.clk);
+	OSM_BOOT_MARKER(dev, "aux_rate", "done");
 
+	OSM_BOOT_MARKER(dev, "osm_rate", "begin");
 	rc = clk_set_rate(osm_clk_src.clkr.hw.clk, osm_clk_init_rate);
 	if (rc) {
 		dev_err(&pdev->dev, "Unable to set init rate on osm_clk, rc=%d\n",
 			rc);
 		goto exit2;
 	}
+	OSM_BOOT_MARKER(dev, "osm_rate", "done");
 
 	/* Make sure index zero is selected */
+	OSM_BOOT_MARKER(dev, "pwrcl_initial_rate", "begin");
 	rc = clk_set_rate(pwrcl_clk.hw.clk, init_rate);
 	if (rc) {
 		dev_err(&pdev->dev, "Unable to set init rate on pwr cluster, rc=%d\n",
 			rc);
 		goto exit2;
 	}
+	OSM_BOOT_MARKER(dev, "pwrcl_initial_rate", "done");
 
+	OSM_BOOT_MARKER(dev, "perfcl_initial_rate", "begin");
 	rc = clk_set_rate(perfcl_clk.hw.clk, init_rate);
 	if (rc) {
 		dev_err(&pdev->dev, "Unable to set init rate on perf cluster, rc=%d\n",
 			rc);
 		goto exit2;
 	}
+	OSM_BOOT_MARKER(dev, "perfcl_initial_rate", "done");
 
+	OSM_BOOT_MARKER(dev, "online_cpu_lock", "begin");
 	get_online_cpus();
+	OSM_BOOT_MARKER(dev, "online_cpu_lock", "done");
 
 	/* Enable OSM */
 	for_each_online_cpu(cpu) {
+		OSM_BOOT_CPU_MARKER(dev, "cpu_clock_enable", cpu, "begin");
 		WARN(clk_prepare_enable(logical_cpu_to_clk(cpu)),
 		     "Failed to enable clock for cpu %d\n", cpu);
+		OSM_BOOT_CPU_MARKER(dev, "cpu_clock_enable", cpu, "done");
 	}
 
 	/* Set final boot rate */
+	OSM_BOOT_MARKER(dev, "pwrcl_boot_rate", "begin");
 	rc = clk_set_rate(pwrcl_clk.hw.clk, data->pwrcl_boot_rate);
 	if (rc) {
 		dev_err(&pdev->dev, "Unable to set boot rate on pwr cluster, rc=%d\n",
 			rc);
 		goto exit2;
 	}
+	OSM_BOOT_MARKER(dev, "pwrcl_boot_rate", "done");
 
+	OSM_BOOT_MARKER(dev, "perfcl_boot_rate", "begin");
 	rc = clk_set_rate(perfcl_clk.hw.clk, data->perfcl_boot_rate);
 	if (rc) {
 		dev_err(&pdev->dev, "Unable to set boot rate on perf cluster, rc=%d\n",
 			rc);
 		goto exit2;
 	}
+	OSM_BOOT_MARKER(dev, "perfcl_boot_rate", "done");
 
 	populate_opp_table(pdev);
+	OSM_BOOT_MARKER(dev, "debugfs", "begin");
 	populate_debugfs_dir(&pwrcl_clk);
 	populate_debugfs_dir(&perfcl_clk);
+	OSM_BOOT_MARKER(dev, "debugfs", "done");
 
+	OSM_BOOT_MARKER(dev, "child_population", "begin");
 	of_platform_populate(pdev->dev.of_node, NULL, NULL, &pdev->dev);
+	OSM_BOOT_MARKER(dev, "child_population", "done");
 
+	OSM_BOOT_MARKER(dev, "callback_registration", "begin");
 	register_cpu_cycle_counter_cb(&cb);
+	OSM_BOOT_MARKER(dev, "callback_registration", "done");
 
+	OSM_BOOT_MARKER(dev, "probe", "done");
 	pr_info("OSM driver initialize\n");
 	put_online_cpus();
 
