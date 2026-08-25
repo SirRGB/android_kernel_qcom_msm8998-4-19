@@ -93,10 +93,51 @@
 };
 
 /* I/O */
+/ {
+	bluetooth: bt_wcn3990 {
+		compatible = "qca,wcn3990";
+		qca,bt-vdd-io-supply = <&pm8998_s3>;
+		qca,bt-vdd-xtal-supply = <&pm8998_s5>;
+		qca,bt-vdd-core-supply = <&pm8998_l7>;
+		qca,bt-vdd-pa-supply = <&pm8998_l17>;
+		qca,bt-vdd-ldo-supply = <&pm8998_l25>;
+		qca,bt-chip-pwd-supply = <&pmi8998_bob_pin1>;
+		clocks = <&clock_rpmcc RPM_SMD_RF_CLK2_PIN>;
+		clock-names = "rf_clk2";
+
+		qca,bt-vdd-io-voltage-level = <1352000 1352000>;
+		qca,bt-vdd-xtal-voltage-level = <2040000 2040000>;
+		qca,bt-vdd-core-voltage-level = <1800000 1800000>;
+		qca,bt-vdd-pa-voltage-level = <1304000 1304000>;
+		qca,bt-vdd-ldo-voltage-level = <3312000 3312000>;
+		qca,bt-chip-pwd-voltage-level = <3600000 3600000>;
+
+		qca,bt-vdd-io-current-level = <1>; /* LPM/PFM */
+		qca,bt-vdd-xtal-current-level = <1>; /* LPM/PFM */
+		qca,bt-vdd-core-current-level = <1>; /* LPM/PFM */
+		qca,bt-vdd-pa-current-level = <1>; /* LPM/PFM */
+		qca,bt-vdd-ldo-current-level = <1>; /* LPM/PFM */
+	};
+};
+
+&blsp1_uart3_hs {
+	status = "okay";
+};
+
 &soc {
 	gpio_keys {
+		compatible = "gpio-keys";
+		label = "gpio-keys";
+		status = "okay";
+		pinctrl-names = "default";
+		pinctrl-0 = <&key_vol_up_default &volume_down_default>;
+
 		vol_up {
-			/delete-property/ gpio-key,wakeup;
+			label = "volume_up";
+			gpios = <&pm8998_gpios 6 GPIO_ACTIVE_LOW>;
+			linux,input-type = <1>;
+			linux,code = <115>;
+			debounce-interval = <15>;
 		};
 
 		vol_down {
@@ -222,6 +263,17 @@
 };
 
 &pm8998_gpios {
+	/* GPIO 6 for Vol+ Key */
+	key_vol_up {
+		key_vol_up_default: key_vol_up_default {
+			pins = "gpio6";
+			function = "normal";
+			input-enable;
+			bias-pull-up;
+			power-source = <0>;
+		};
+	};
+
 	pm8998_gp13 {
 		pm8998_gpio_13: gp13 {
 			pins = "gpio13";
@@ -254,6 +306,29 @@
 };
 
 /* Storage */
+&ufsphy1 {
+	vdda-phy-supply = <&pm8998_l1>;
+	vdda-pll-supply = <&pm8998_l2>;
+	vddp-ref-clk-supply = <&pm8998_l26>;
+	vdda-phy-max-microamp = <51400>;
+	vdda-pll-max-microamp = <14600>;
+	vddp-ref-clk-max-microamp = <100>;
+	vddp-ref-clk-always-on;
+	status = "okay";
+};
+
+&ufs1 {
+	vdd-hba-supply = <&gdsc_ufs>;
+	vdd-hba-fixed-regulator;
+	vcc-supply = <&pm8998_l20>;
+	vccq-supply = <&pm8998_l26>;
+	vccq2-supply = <&pm8998_s4>;
+	vcc-max-microamp = <750000>;
+	vccq-max-microamp = <560000>;
+	vccq2-max-microamp = <750000>;
+	status = "okay";
+};
+
 &sdhc_2 {
 	status = "disabled";
 };
