@@ -27,6 +27,7 @@
 #include <linux/uaccess.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
+#include <linux/workqueue.h>
 #include <soc/qcom/scm.h>
 #include <dt-bindings/clock/qcom,cpu-osm.h>
 
@@ -2569,6 +2570,11 @@ fail:
 	return NULL;
 }
 
+static long clk_osm_prepare_enable_on_cpu(void *data)
+{
+	return clk_prepare_enable(data);
+}
+
 static u64 clk_osm_get_cpu_cycle_counter(int cpu)
 {
 	struct clk_osm *c;
@@ -3256,6 +3262,7 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 {
 	const struct clk_cpu_osm_data *data;
 	int rc = 0, cpu, i;
+	bool perfcl_enable_dispatched = false;
 	int speedbin = 0, pvs_ver = 0;
 	u32 pte_efuse;
 	int num_clks = ARRAY_SIZE(osm_qcom_clk_hws);
@@ -3587,8 +3594,15 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 
 	/* Enable OSM */
 	for_each_online_cpu(cpu) {
+		clk = logical_cpu_to_clk(cpu);
 		OSM_BOOT_CPU_MARKER(dev, "cpu_clock_enable", cpu, "begin");
-		WARN(clk_prepare_enable(logical_cpu_to_clk(cpu)),
+		if (clk == perfcl_clk.hw.clk && !perfcl_enable_dispatched) {
+			perfcl_enable_dispatched = true;
+			rc = work_on_cpu(cpu, clk_osm_prepare_enable_on_cpu, clk);
+		} else {
+			rc = clk_prepare_enable(clk);
+		}
+		WARN(rc,
 		     "Failed to enable clock for cpu %d\n", cpu);
 		OSM_BOOT_CPU_MARKER(dev, "cpu_clock_enable", cpu, "done");
 	}
