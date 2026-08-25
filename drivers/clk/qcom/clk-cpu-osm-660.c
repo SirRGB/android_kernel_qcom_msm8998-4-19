@@ -40,9 +40,17 @@
 	dev_info(dev, "OSM boot: %s %s\n", phase, state)
 #define OSM_BOOT_CPU_MARKER(dev, phase, cpu, state) \
 	dev_info(dev, "OSM boot: %s cpu%d %s\n", phase, cpu, state)
+#define OSM_ENABLE_MARKER(c, phase, state) \
+	pr_info("OSM enable: cluster%u %s %s\n", \
+		(c)->cluster_num, phase, state)
+#define OSM_ENABLE_RETURN(c, rc) \
+	pr_info("OSM enable: cluster%u clk_osm_enable return rc=%d\n", \
+		(c)->cluster_num, rc)
 #else
 #define OSM_BOOT_MARKER(dev, phase, state) do { } while (0)
 #define OSM_BOOT_CPU_MARKER(dev, phase, cpu, state) do { } while (0)
+#define OSM_ENABLE_MARKER(c, phase, state) do { } while (0)
+#define OSM_ENABLE_RETURN(c, rc) do { } while (0)
 #endif
 
 enum {
@@ -514,17 +522,24 @@ static int clk_osm_acd_local_write_reg(struct clk_osm *c, u32 val, u32 offset)
 	}
 
 	/* Clear write control register */
+	OSM_ENABLE_MARKER(c, "acd_local_control_clear", "begin");
 	writel_relaxed(reg, (char *)c->vbases[ACD_BASE] + ACD_WRITE_CTL);
+	OSM_ENABLE_MARKER(c, "acd_local_control_clear", "done");
 
 	/* Set select and update_en fields in write control register */
 	reg = (ACD_REG_RELATIVE_ADDR(offset) << ACD_WRITE_CTL_SELECT_SHIFT)
 		| ACD_WRITE_CTL_UPDATE_EN;
+	OSM_ENABLE_MARKER(c, "acd_local_control_start", "begin");
 	writel_relaxed(reg, (char *)c->vbases[ACD_BASE] + ACD_WRITE_CTL);
+	OSM_ENABLE_MARKER(c, "acd_local_control_start", "done");
 
 	/* Ensure writes complete before polling */
+	OSM_ENABLE_MARKER(c, "acd_local_barrier", "begin");
 	clk_osm_acd_mb(c);
+	OSM_ENABLE_MARKER(c, "acd_local_barrier", "done");
 
 	/* Poll write status register */
+	OSM_ENABLE_MARKER(c, "acd_local_status_poll", "begin");
 	for (timeout = ACD_LOCAL_TRANSFER_TIMEOUT_NS; timeout > 0;
 	     timeout -= 100) {
 		reg = readl_relaxed((char *)c->vbases[ACD_BASE]
@@ -535,10 +550,12 @@ static int clk_osm_acd_local_write_reg(struct clk_osm *c, u32 val, u32 offset)
 	}
 
 	if (!timeout) {
+		OSM_ENABLE_MARKER(c, "acd_local_status_poll", "timeout");
 		pr_err("local write timed out, offset=0x%x val=0x%x status=0x%x\n",
 		       offset, val, reg);
 		return -ETIMEDOUT;
 	}
+	OSM_ENABLE_MARKER(c, "acd_local_status_poll", "done");
 
 	return 0;
 }
@@ -546,10 +563,14 @@ static int clk_osm_acd_local_write_reg(struct clk_osm *c, u32 val, u32 offset)
 static int clk_osm_acd_master_write_through_reg(struct clk_osm *c,
 						u32 val, u32 offset)
 {
+	OSM_ENABLE_MARKER(c, "acd_write_through_master", "begin");
 	writel_relaxed(val, (char *)c->vbases[ACD_BASE] + offset);
+	OSM_ENABLE_MARKER(c, "acd_write_through_master", "done");
 
 	/* Ensure writes complete before transfer to local copy */
+	OSM_ENABLE_MARKER(c, "acd_write_through_barrier", "begin");
 	clk_osm_acd_mb(c);
+	OSM_ENABLE_MARKER(c, "acd_write_through_barrier", "done");
 
 	return clk_osm_acd_local_write_reg(c, val, offset);
 }
@@ -565,20 +586,29 @@ static int clk_osm_acd_auto_local_write_reg(struct clk_osm *c, u32 mask)
 		bitmask &= bitmask - 1;
 
 	/* Program auto-transfter mask */
+	OSM_ENABLE_MARKER(c, "acd_auto_transfer_config", "begin");
 	writel_relaxed(mask, (char *)c->vbases[ACD_BASE] + ACD_AUTOXFER_CFG);
+	OSM_ENABLE_MARKER(c, "acd_auto_transfer_config", "done");
 
 	/* Clear start field in auto-transfer register */
+	OSM_ENABLE_MARKER(c, "acd_auto_transfer_clear", "begin");
 	writel_relaxed(ACD_AUTOXFER_START_CLEAR,
 		       (char *)c->vbases[ACD_BASE] + ACD_AUTOXFER);
+	OSM_ENABLE_MARKER(c, "acd_auto_transfer_clear", "done");
 
 	/* Set start field in auto-transfer register */
+	OSM_ENABLE_MARKER(c, "acd_auto_transfer_start", "begin");
 	writel_relaxed(ACD_AUTOXFER_START_SET,
 		       (char *)c->vbases[ACD_BASE] + ACD_AUTOXFER);
+	OSM_ENABLE_MARKER(c, "acd_auto_transfer_start", "done");
 
 	/* Ensure writes complete before polling */
+	OSM_ENABLE_MARKER(c, "acd_auto_transfer_barrier", "begin");
 	clk_osm_acd_mb(c);
+	OSM_ENABLE_MARKER(c, "acd_auto_transfer_barrier", "done");
 
 	/* Poll auto-transfer status register */
+	OSM_ENABLE_MARKER(c, "acd_auto_transfer_status_poll", "begin");
 	for (timeout = ACD_LOCAL_TRANSFER_TIMEOUT_NS * numregs;
 	     timeout > 0; timeout -= 100) {
 		reg = readl_relaxed((char *)c->vbases[ACD_BASE]
@@ -589,10 +619,12 @@ static int clk_osm_acd_auto_local_write_reg(struct clk_osm *c, u32 mask)
 	}
 
 	if (!timeout) {
+		OSM_ENABLE_MARKER(c, "acd_auto_transfer_status_poll", "timeout");
 		pr_err("local register auto-transfer timed out, mask=0x%x registers=%d status=0x%x\n",
 		       mask, numregs, reg);
 		return -ETIMEDOUT;
 	}
+	OSM_ENABLE_MARKER(c, "acd_auto_transfer_status_poll", "done");
 
 	return 0;
 }
@@ -739,25 +771,35 @@ static int clk_osm_enable(struct clk_hw *hw)
 	struct clk_osm *cpuclk = to_clk_osm(hw);
 	int rc;
 
+	OSM_ENABLE_MARKER(cpuclk, "clk_osm_enable", "entry");
+	OSM_ENABLE_MARKER(cpuclk, "acd_init", "entered");
 	rc = clk_osm_acd_init(cpuclk);
 	if (rc) {
+		OSM_ENABLE_MARKER(cpuclk, "acd_init", "failed");
 		pr_err("Failed to initialize ACD for cluster %d, rc=%d\n",
 				cpuclk->cluster_num, rc);
+		OSM_ENABLE_RETURN(cpuclk, rc);
 		return rc;
 	}
+	OSM_ENABLE_MARKER(cpuclk, "acd_init", "returned");
 
 	/* Wait for 5 usecs before enabling OSM */
 	udelay(5);
 
+	OSM_ENABLE_MARKER(cpuclk, "osm_enable_write", "begin");
 	clk_osm_write_reg(cpuclk, 1, ENABLE_REG);
+	OSM_ENABLE_MARKER(cpuclk, "osm_enable_write", "done");
 
 	/* Make sure the write goes through before proceeding */
+	OSM_ENABLE_MARKER(cpuclk, "osm_enable_barrier", "begin");
 	clk_osm_mb(cpuclk, OSM_BASE);
+	OSM_ENABLE_MARKER(cpuclk, "osm_enable_barrier", "done");
 
 	/* Wait for 5us for OSM hardware to enable */
 	udelay(5);
 
 	pr_debug("OSM clk enabled for cluster=%d\n", cpuclk->cluster_num);
+	OSM_ENABLE_RETURN(cpuclk, 0);
 
 	return 0;
 }
@@ -3076,32 +3118,46 @@ static int clk_osm_acd_init(struct clk_osm *c)
 	int rc = 0;
 	u32 auto_xfer_mask = 0;
 
-	if (!c->acd_init)
+	if (!c->acd_init) {
+		OSM_ENABLE_MARKER(c, "acd_init", "skipped");
 		return 0;
+	}
 
 	c->acd_debugfs_addr = ACD_HW_VERSION;
 
 	/* Program ACD tunable-length delay register */
+	OSM_ENABLE_MARKER(c, "acd_master_acdtd_write", "begin");
 	clk_osm_acd_master_write_reg(c, c->acd_td, ACDTD);
+	OSM_ENABLE_MARKER(c, "acd_master_acdtd_write", "done");
 	auto_xfer_mask |= ACD_REG_RELATIVE_ADDR_BITMASK(ACDTD);
 
 	/* Program ACD control register */
+	OSM_ENABLE_MARKER(c, "acd_master_acdcr_write", "begin");
 	clk_osm_acd_master_write_reg(c, c->acd_cr, ACDCR);
+	OSM_ENABLE_MARKER(c, "acd_master_acdcr_write", "done");
 	auto_xfer_mask |= ACD_REG_RELATIVE_ADDR_BITMASK(ACDCR);
 
 	/* Program ACD soft start control register */
+	OSM_ENABLE_MARKER(c, "acd_master_acdsscr_write", "begin");
 	clk_osm_acd_master_write_reg(c, c->acd_sscr, ACDSSCR);
+	OSM_ENABLE_MARKER(c, "acd_master_acdsscr_write", "done");
 	auto_xfer_mask |= ACD_REG_RELATIVE_ADDR_BITMASK(ACDSSCR);
 
 	/* Program initial ACD external interface configuration register */
+	OSM_ENABLE_MARKER(c, "acd_master_extint0_write", "begin");
 	clk_osm_acd_master_write_reg(c, c->acd_extint0_cfg, ACD_EXTINT_CFG);
+	OSM_ENABLE_MARKER(c, "acd_master_extint0_write", "done");
 	auto_xfer_mask |= ACD_REG_RELATIVE_ADDR_BITMASK(ACD_EXTINT_CFG);
 
 	/* Program ACD auto-register transfer control register */
+	OSM_ENABLE_MARKER(c, "acd_master_autoxfer_ctl_write", "begin");
 	clk_osm_acd_master_write_reg(c, c->acd_autoxfer_ctl, ACD_AUTOXFER_CTL);
+	OSM_ENABLE_MARKER(c, "acd_master_autoxfer_ctl_write", "done");
 
 	/* Ensure writes complete before transfers to local copy */
+	OSM_ENABLE_MARKER(c, "acd_initial_master_barrier", "begin");
 	clk_osm_acd_mb(c);
+	OSM_ENABLE_MARKER(c, "acd_initial_master_barrier", "done");
 
 	/* Transfer master copies */
 	rc = clk_osm_acd_auto_local_write_reg(c, auto_xfer_mask);
@@ -3109,29 +3165,39 @@ static int clk_osm_acd_init(struct clk_osm *c)
 		return rc;
 
 	/* Switch CPUSS clock source to ACD clock */
+	OSM_ENABLE_MARKER(c, "acd_gfmux_write_through", "begin");
 	rc = clk_osm_acd_master_write_through_reg(c, ACD_GFMUX_CFG_SELECT,
 						  ACD_GFMUX_CFG);
+	OSM_ENABLE_MARKER(c, "acd_gfmux_write_through", rc ? "failed" : "done");
 	if (rc)
 		return rc;
 
 	/* Program ACD_DCVS_SW */
+	OSM_ENABLE_MARKER(c, "acd_dcvs_set_write_through", "begin");
 	rc = clk_osm_acd_master_write_through_reg(c,
 				  ACD_DCVS_SW_DCVS_IN_PRGR_SET,
 				  ACD_DCVS_SW);
+	OSM_ENABLE_MARKER(c, "acd_dcvs_set_write_through",
+			  rc ? "failed" : "done");
 	if (rc)
 		return rc;
 
+	OSM_ENABLE_MARKER(c, "acd_dcvs_clear_write_through", "begin");
 	rc = clk_osm_acd_master_write_through_reg(c,
 				  ACD_DCVS_SW_DCVS_IN_PRGR_CLEAR,
 				  ACD_DCVS_SW);
+	OSM_ENABLE_MARKER(c, "acd_dcvs_clear_write_through",
+			  rc ? "failed" : "done");
 	if (rc)
 		return rc;
 
 	udelay(1);
 
 	/* Program final ACD external interface configuration register */
+	OSM_ENABLE_MARKER(c, "acd_extint1_write_through", "begin");
 	rc = clk_osm_acd_master_write_through_reg(c, c->acd_extint1_cfg,
 						  ACD_EXTINT_CFG);
+	OSM_ENABLE_MARKER(c, "acd_extint1_write_through", rc ? "failed" : "done");
 	if (rc)
 		return rc;
 
@@ -3140,7 +3206,9 @@ static int clk_osm_acd_init(struct clk_osm *c)
 	 * must be copied from master to local copy on PC exit.
 	 */
 	auto_xfer_mask |= ACD_REG_RELATIVE_ADDR_BITMASK(ACD_GFMUX_CFG);
+	OSM_ENABLE_MARKER(c, "acd_final_autoxfer_config_write", "begin");
 	clk_osm_acd_master_write_reg(c, auto_xfer_mask, ACD_AUTOXFER_CFG);
+	OSM_ENABLE_MARKER(c, "acd_final_autoxfer_config_write", "done");
 
 	if (clear_acd_init)
 		c->acd_init = false;
