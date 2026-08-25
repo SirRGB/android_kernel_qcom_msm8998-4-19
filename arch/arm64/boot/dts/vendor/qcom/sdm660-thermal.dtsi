@@ -8,7 +8,7 @@
 		interrupts = <GIC_SPI 37 IRQ_TYPE_LEVEL_HIGH>;
 		qcom,affinity = <0>;
 		reg = <0x179ce800 0x1000>,
-			<0x179c1400 0x1000>;
+		<0x179c1400 0x1000>;
 		qcom,legacy-lmh-enable;
 		qcom,no-cooling-device-register;
 	};
