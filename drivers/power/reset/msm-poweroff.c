@@ -6,6 +6,7 @@
 #include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/init.h>
+#include <linux/interrupt.h>
 #include <linux/kernel.h>
 
 #include <linux/io.h>
@@ -73,6 +74,53 @@ static void *emergency_dload_mode_addr;
 static bool scm_dload_supported;
 
 static bool force_warm_reboot;
+
+#ifdef CONFIG_QCOM_EDL_900E_ENTRY
+#define EDL_900E_BACKSTOP_GRACE_MS	(5 * MSEC_PER_SEC)
+#define EDL_900E_BACKSTOP_POLL_MS	MSEC_PER_SEC
+
+static int msm_edl_900e_reboot_call(struct notifier_block *this,
+				    unsigned long code, void *_cmd)
+{
+	const char *cmd = _cmd;
+	unsigned long deadline;
+
+	/*
+	 * Intercept only the ordinary warm-reboot request under test. Explicit
+	 * restart targets and every non-diagnostic build retain their existing
+	 * behavior. The panic path also bypasses this notifier and reaches the
+	 * restart handler directly.
+	 */
+	if (code != SYS_RESTART || !force_warm_reboot || in_panic ||
+	    restart_mode == RESTART_DLOAD || (cmd && cmd[0]))
+		return NOTIFY_DONE;
+
+	pr_emerg("qcom-edl-900e: ordinary warm reboot intercepted before shutdown\n");
+
+	if (!qcom_edl_900e_arm())
+		panic("qcom-edl-900e: handoff arm failed");
+
+	/*
+	 * Do not return into kernel_restart_prepare(), which would shut down
+	 * devices and continue to the failing warm reset. The worker enters the
+	 * validated softirq fault path after two minutes. Polling sleeps in
+	 * short intervals so this blocking notifier does not trip hung-task
+	 * detection. If the worker cannot run, panic directly after a bounded
+	 * grace period so the QCOM panic notifier still selects EDL.
+	 */
+	deadline = jiffies + msecs_to_jiffies(QCOM_EDL_900E_DELAY_MS +
+					       EDL_900E_BACKSTOP_GRACE_MS);
+	while (time_before(jiffies, deadline))
+		msleep(EDL_900E_BACKSTOP_POLL_MS);
+
+	panic("qcom-edl-900e: timed handoff failed");
+}
+
+static struct notifier_block msm_edl_900e_reboot_notifier = {
+	.notifier_call = msm_edl_900e_reboot_call,
+	.priority = INT_MAX,
+};
+#endif
 
 /* interface for exporting attributes */
 struct reset_attribute {
@@ -650,6 +698,13 @@ static int msm_restart_probe(struct platform_device *pdev)
 
 	force_warm_reboot = of_property_read_bool(dev->of_node,
 						"qcom,force-warm-reboot");
+
+#ifdef CONFIG_QCOM_EDL_900E_ENTRY
+	ret = register_reboot_notifier(&msm_edl_900e_reboot_notifier);
+	if (ret)
+		pr_err("qcom-edl-900e: failed to install reboot intercept: %d\n",
+		       ret);
+#endif
 
 	return 0;
 

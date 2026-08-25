@@ -1018,6 +1018,33 @@ config PANIC_TIMEOUT
 	  value n > 0 will wait n seconds before rebooting, while a timeout
 	  value n < 0 will reboot immediately.
 
+config QCOM_EDL_900E_ENTRY
+	bool "Redirect ordinary QCOM warm reboot to controlled EDL (900E)"
+	depends on ARCH_QCOM
+	help
+	  Intercept an ordinary forced-warm reboot before device shutdown and
+	  arm a one-shot softirq after the QCOM restart driver has installed the
+	  panic and emergency-download paths. Arming queues long-running work
+	  that busy-polls for a fixed two minutes, then raises the softirq to
+	  crash by dereferencing a global object that was freed without being
+	  cleared.
+	  The worker stays runnable so hung-task detection does not apply,
+	  yields when needed, and refreshes the watchdog while polling. Because
+	  a fault in softirq context is in_interrupt(), the kernel forces a
+	  panic regardless of panic_on_oops; the QCOM panic path then arms the
+	  download-mode cookie and warm-resets into Emergency Download mode,
+	  which enumerates as Qualcomm USB PID 900E.
+
+	  The reboot notifier never returns into the normal shutdown path. If
+	  the worker does not fire, a bounded direct-panic backstop enters the
+	  same QCOM EDL path. Explicit reboot targets are not intercepted.
+
+	  This is a bring-up diagnostic for a platform whose ordinary warm reset
+	  falls into USB PID 9008. It deliberately crashes the kernel to request
+	  USB PID 900E and must never be enabled in a production build.
+
+	  If unsure, say N.
+
 config SCHED_DEBUG
 	bool "Collect scheduler debugging info"
 	depends on DEBUG_KERNEL && PROC_FS
