@@ -1848,9 +1848,39 @@
 
 /* Thermistors */
 &pm8998_vadc {
+	xo_therm@4c {
+		label = "xo_therm";
+		reg = <ADC_XO_THERM_PU2>;
+		qcom,decimation = <1024>;
+		qcom,pre-scaling = <1 1>;
+		qcom,ratiometric;
+		qcom,hw-settle-time = <200>;
+		qcom,avg-samples = <1>;
+	};
+
+	msm_therm@4d {
+		label = "msm_therm";
+		reg = <ADC_AMUX_THM1_PU2>;
+		qcom,decimation = <1024>;
+		qcom,pre-scaling = <1 1>;
+		qcom,ratiometric;
+		qcom,hw-settle-time = <200>;
+		qcom,avg-samples = <1>;
+	};
+
 	pa_therm0@4f {
 		label = "pa_therm0";
 		reg = <ADC_AMUX_THM3_PU2>;
+		qcom,decimation = <1024>;
+		qcom,pre-scaling = <1 1>;
+		qcom,ratiometric;
+		qcom,hw-settle-time = <200>;
+		qcom,avg-samples = <1>;
+	};
+
+	quiet_therm@51 {
+		label = "quiet_therm";
+		reg = <ADC_AMUX_THM5_PU2>;
 		qcom,decimation = <1024>;
 		qcom,pre-scaling = <1 1>;
 		qcom,ratiometric;
