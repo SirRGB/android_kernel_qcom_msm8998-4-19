@@ -25,6 +25,19 @@ enum core_ldo_levels {
 
 #define INIT_MAX_TIME_USEC			1000
 
+/* MSM8998 QSERDES v3 common status registers */
+#define MSM8998_QSERDES_COM_BIAS_EN_CLKBUFLR_EN	0x034
+#define MSM8998_QSERDES_COM_SYS_CLK_CTRL		0x03c
+#define MSM8998_QSERDES_COM_PLL_IVCO		0x048
+#define MSM8998_QSERDES_COM_SYSCLK_DET_COMP_STATUS	0x058
+#define MSM8998_QSERDES_COM_RESETSM_CNTRL	0x088
+#define MSM8998_QSERDES_COM_LOCK_CMP_EN		0x090
+#define MSM8998_QSERDES_COM_LOCK_CMP_CFG		0x094
+#define MSM8998_QSERDES_COM_CMN_STATUS		0x124
+#define MSM8998_QSERDES_COM_RESET_SM_STATUS	0x128
+#define MSM8998_QSERDES_COM_CLK_SELECT		0x138
+#define MSM8998_QSERDES_COM_C_READY_STATUS	0x158
+
 /* default CORE votlage and load values */
 #define USB_SSPHY_1P2_VOL_MIN		1200000 /* uV */
 #define USB_SSPHY_1P2_VOL_MAX		1200000 /* uV */
@@ -105,6 +118,25 @@ struct qmp_reg_val {
 	u32 delay;
 };
 
+struct msm8998_qmp_snapshot {
+	u32 pcs;
+	u32 sysclk;
+	u32 common;
+	u32 reset_sm;
+	u32 c_ready;
+	u32 bias;
+	u32 sys_clk_ctrl;
+	u32 pll_ivco;
+	u32 resetsm_ctrl;
+	u32 lock_cmp_en;
+	u32 lock_cmp_cfg;
+	u32 clk_select;
+	u32 power;
+	u32 sw_reset;
+	u32 start;
+	u32 typec;
+};
+
 struct msm_ssphy_qmp {
 	struct usb_phy		phy;
 	void __iomem		*base;
@@ -140,9 +172,16 @@ struct msm_ssphy_qmp {
 	u32			*qmp_phy_init_seq;
 	int			init_seq_len;
 	unsigned int		init_attempt;
+	bool			msm8998;
 };
 
+static const bool msm8998_qmp = true;
+
 static const struct of_device_id msm_usb_id_table[] = {
+	{
+		.compatible = "qcom,msm8998-usb-ssphy-qmp-v2",
+		.data = &msm8998_qmp,
+	},
 	{
 		.compatible = "qcom,usb-ssphy-qmp",
 	},
@@ -164,6 +203,100 @@ MODULE_DEVICE_TABLE(of, msm_usb_id_table);
 
 static void usb_qmp_powerup_phy(struct msm_ssphy_qmp *phy);
 static void msm_ssphy_qmp_enable_clks(struct msm_ssphy_qmp *phy, bool on);
+static int msm_ssphy_qmp_reset(struct usb_phy *uphy);
+
+static void msm8998_qmp_snapshot(struct msm_ssphy_qmp *phy,
+				 unsigned int attempt, const char *stage)
+{
+	struct msm8998_qmp_snapshot snapshot;
+
+	snapshot.pcs = readl_relaxed(phy->base +
+			phy->phy_reg[USB3_PHY_PCS_STATUS]);
+	snapshot.sysclk = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_SYSCLK_DET_COMP_STATUS);
+	snapshot.common = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_CMN_STATUS);
+	snapshot.reset_sm = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_RESET_SM_STATUS);
+	snapshot.c_ready = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_C_READY_STATUS);
+	snapshot.bias = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_BIAS_EN_CLKBUFLR_EN);
+	snapshot.sys_clk_ctrl = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_SYS_CLK_CTRL);
+	snapshot.pll_ivco = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_PLL_IVCO);
+	snapshot.resetsm_ctrl = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_RESETSM_CNTRL);
+	snapshot.lock_cmp_en = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_LOCK_CMP_EN);
+	snapshot.lock_cmp_cfg = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_LOCK_CMP_CFG);
+	snapshot.clk_select = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_CLK_SELECT);
+	snapshot.power = readl_relaxed(phy->base +
+			phy->phy_reg[USB3_PHY_POWER_DOWN_CONTROL]);
+	snapshot.sw_reset = readl_relaxed(phy->base +
+			phy->phy_reg[USB3_PHY_SW_RESET]);
+	snapshot.start = readl_relaxed(phy->base +
+			phy->phy_reg[USB3_PHY_START]);
+	snapshot.typec = readl_relaxed(phy->base +
+			phy->phy_reg[USB3_PHY_PCS_MISC_TYPEC_CTRL]);
+
+	dev_info(phy->phy.dev,
+		 "QMP %u %s status: pcs=%08x sys=%08x cmn=%08x rst=%08x rdy=%08x\n",
+		 attempt, stage, snapshot.pcs, snapshot.sysclk, snapshot.common,
+		 snapshot.reset_sm, snapshot.c_ready);
+	dev_info(phy->phy.dev,
+		 "QMP %u %s pll: bias=%08x sysctl=%08x ivco=%08x rsm=%08x lock=%08x/%08x sel=%08x\n",
+		 attempt, stage, snapshot.bias, snapshot.sys_clk_ctrl,
+		 snapshot.pll_ivco, snapshot.resetsm_ctrl,
+		 snapshot.lock_cmp_en, snapshot.lock_cmp_cfg,
+		 snapshot.clk_select);
+	dev_info(phy->phy.dev,
+		 "QMP %u %s ctl: pwr=%08x rst=%08x start=%08x typec=%08x\n",
+		 attempt, stage, snapshot.power, snapshot.sw_reset,
+		 snapshot.start, snapshot.typec);
+}
+
+static bool msm_ssphy_qmp_start(struct msm_ssphy_qmp *phy,
+				unsigned int attempt)
+{
+	unsigned int i;
+	u32 status;
+
+	writel_relaxed(0x00, phy->base +
+			phy->phy_reg[USB3_PHY_SW_RESET]);
+	if (phy->msm8998) {
+		mb();
+		msm8998_qmp_snapshot(phy, attempt, "post-reset");
+	}
+	writel_relaxed(0x03, phy->base +
+			phy->phy_reg[USB3_PHY_START]);
+
+	/* Make sure the release sequence completed before polling the PHY. */
+	mb();
+	if (phy->msm8998)
+		msm8998_qmp_snapshot(phy, attempt, "post-start");
+
+	for (i = 0; i < INIT_MAX_TIME_USEC; i++) {
+		if (phy->msm8998 && i == 10)
+			msm8998_qmp_snapshot(phy, attempt, "poll-10");
+		if (phy->msm8998 && i == 100)
+			msm8998_qmp_snapshot(phy, attempt, "poll-100");
+
+		status = readl_relaxed(phy->base +
+				phy->phy_reg[USB3_PHY_PCS_STATUS]);
+		if (!(status & PHYSTATUS))
+			break;
+		usleep_range(1, 2);
+	}
+
+	if (phy->msm8998)
+		msm8998_qmp_snapshot(phy, attempt, "final");
+
+	return i < INIT_MAX_TIME_USEC;
+}
 
 static inline char *get_cable_status_str(struct msm_ssphy_qmp *phy)
 {
@@ -456,11 +589,9 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 	struct msm_ssphy_qmp *phy = container_of(uphy, struct msm_ssphy_qmp,
 					phy);
 	int ret;
-	unsigned int init_timeout_usec = INIT_MAX_TIME_USEC;
 	unsigned int attempt = ++phy->init_attempt;
 	const struct qmp_reg_val *reg = NULL;
-	bool diagnose = of_device_is_compatible(uphy->dev->of_node,
-						"qcom,usb-ssphy-qmp-v2");
+	bool diagnose = phy->msm8998;
 
 	dev_dbg(uphy->dev, "Initializing QMP phy\n");
 
@@ -495,6 +626,8 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 				phy->phy_reg[USB3_PHY_PCS_STATUS]));
 
 	reg = (struct qmp_reg_val *)phy->qmp_phy_init_seq;
+	if (diagnose)
+		msm8998_qmp_snapshot(phy, attempt, "pre-table");
 
 	/* Main configuration */
 	ret = configure_phy_regs(uphy, reg);
@@ -503,10 +636,7 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 		goto fail;
 	}
 	if (diagnose)
-		dev_info(uphy->dev,
-			 "QMP init %u table: com_clk_select=%#x pcs_rxeq=%#x\n",
-			 attempt, readl_relaxed(phy->base + 0x138),
-			 readl_relaxed(phy->base + 0xcbc));
+		msm8998_qmp_snapshot(phy, attempt, "post-table");
 
 	/* perform software reset of PHY common logic */
 	if (phy->phy.type == USB_PHY_TYPE_USB3_AND_DP &&
@@ -514,43 +644,15 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 		writel_relaxed(0x00,
 			phy->base + phy->phy_reg[USB3_DP_COM_SW_RESET]);
 
-	/* perform software reset of PCS/Serdes */
-	writel_relaxed(0x00, phy->base + phy->phy_reg[USB3_PHY_SW_RESET]);
-	/* start PCS/Serdes to operation mode */
-	writel_relaxed(0x03, phy->base + phy->phy_reg[USB3_PHY_START]);
+	if (msm_ssphy_qmp_start(phy, attempt))
+		return 0;
+	dev_err(uphy->dev, "QMP PHY initialization timeout\n");
+	dev_err(uphy->dev, "USB3_PHY_PCS_STATUS:%x\n",
+		readl_relaxed(phy->base +
+			      phy->phy_reg[USB3_PHY_PCS_STATUS]));
+	ret = -EBUSY;
+	goto fail;
 
-	/* Make sure above write completed to bring PHY out of reset */
-	mb();
-	if (diagnose)
-		dev_info(uphy->dev,
-			 "QMP init %u start: reset=%#x start=%#x status=%#x\n",
-			 attempt,
-			 readl_relaxed(phy->base +
-				phy->phy_reg[USB3_PHY_SW_RESET]),
-			 readl_relaxed(phy->base +
-				phy->phy_reg[USB3_PHY_START]),
-			 readl_relaxed(phy->base +
-				phy->phy_reg[USB3_PHY_PCS_STATUS]));
-
-	/* Wait for PHY initialization to be done */
-	do {
-		if (readl_relaxed(phy->base +
-			phy->phy_reg[USB3_PHY_PCS_STATUS]) & PHYSTATUS)
-			usleep_range(1, 2);
-		else
-			break;
-	} while (--init_timeout_usec);
-
-	if (!init_timeout_usec) {
-		dev_err(uphy->dev, "QMP PHY initialization timeout\n");
-		dev_err(uphy->dev, "USB3_PHY_PCS_STATUS:%x\n",
-				readl_relaxed(phy->base +
-					phy->phy_reg[USB3_PHY_PCS_STATUS]));
-		ret = -EBUSY;
-		goto fail;
-	};
-
-	return 0;
 fail:
 	phy->in_suspend = true;
 	writel_relaxed(0x00,
@@ -654,8 +756,7 @@ static int msm_ssphy_qmp_reset(struct usb_phy *uphy)
 		dev_err(uphy->dev, "phy_phy_reset deassert failed\n");
 		goto exit;
 	}
-	if (of_device_is_compatible(uphy->dev->of_node,
-				    "qcom,usb-ssphy-qmp-v2"))
+	if (phy->msm8998)
 		dev_info(uphy->dev,
 			 "QMP reset: phy_phy and phy assert/deassert succeeded\n");
 
@@ -909,8 +1010,7 @@ static void msm_ssphy_qmp_enable_clks(struct msm_ssphy_qmp *phy, bool on)
 {
 	int aux_ret = 0, cfg_ret = 0, pipe_ret = 0;
 	int ref_src_ret = 0, ref_ret = 0, com_aux_ret = 0, parent_ret = 0;
-	bool diagnose = of_device_is_compatible(phy->phy.dev->of_node,
-						"qcom,usb-ssphy-qmp-v2");
+	bool diagnose = phy->msm8998;
 
 	dev_dbg(phy->phy.dev, "%s(): clk_enabled:%d on:%d\n", __func__,
 					phy->clk_enabled, on);
@@ -986,6 +1086,7 @@ static int msm_ssphy_qmp_probe(struct platform_device *pdev)
 	phy = devm_kzalloc(dev, sizeof(*phy), GFP_KERNEL);
 	if (!phy)
 		return -ENOMEM;
+	phy->msm8998 = !!of_device_get_match_data(dev);
 
 	phy->phy.type = USB_PHY_TYPE_USB3;
 	if (of_device_is_compatible(dev->of_node,

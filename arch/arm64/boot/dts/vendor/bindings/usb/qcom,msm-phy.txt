@@ -47,9 +47,11 @@ Example:
 SSUSB-QMP PHY
 
 Required properties:
- - compatible: Should be "qcom,usb-ssphy-qmp", "qcom,usb-ssphy-qmp-v1" or
-   "qcom,usb-ssphy-qmp-v2" or "qcom,usb-ssphy-qmp-usb3-or-dp" or
-   "qcom,usb-ssphy-qmp-dp-combo"
+ - compatible: Should be "qcom,usb-ssphy-qmp", "qcom,usb-ssphy-qmp-v1",
+   "qcom,usb-ssphy-qmp-v2", "qcom,usb-ssphy-qmp-usb3-or-dp" or
+   "qcom,usb-ssphy-qmp-dp-combo". MSM8998 should use
+   "qcom,msm8998-usb-ssphy-qmp-v2" followed by
+   "qcom,usb-ssphy-qmp-v2" as a fallback.
  - reg: Address and length of the register set for the device
    Required reg-names entry must contain:
    "qmp_phy_base" : QMP PHY Base register set.
