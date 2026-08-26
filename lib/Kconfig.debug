@@ -1042,6 +1042,24 @@ config QCOM_EDL_900E_ENTRY
 
 	  If unsure, say N.
 
+config QCOM_WARM_REBOOT_EDL_900E_ENTRY
+	bool "Arm controlled QCOM EDL (900E) entry on warm reboot"
+	depends on QCOM_EDL_900E_ENTRY && POWER_RESET_QCOM
+	help
+	  Replace the controlled EDL timer's probe-time trigger with an early
+	  intercept of an ordinary Android or TWRP warm-reboot request. The
+	  intercept runs at the start of kernel_restart(), before reboot
+	  notifiers and device shutdown, while the timer's workqueue and the
+	  QCOM panic and emergency-download paths remain available.
+
+	  This target recognizes the empty TWRP reboot target and Android's
+	  "shell" target. It leaves named reboot targets, download mode, panic,
+	  and kernel-internal restarts unchanged. The normal restart path is
+	  parked after the timer is armed, with a bounded direct-panic backstop.
+
+	  This deliberately crashes the kernel and is only for controlled
+	  bring-up recovery. If unsure, say N.
+
 config SCHED_DEBUG
 	bool "Collect scheduler debugging info"
 	depends on DEBUG_KERNEL && PROC_FS

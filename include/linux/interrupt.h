@@ -481,9 +481,10 @@ enum
 };
 
 #ifdef CONFIG_QCOM_EDL_900E_ENTRY
-void qcom_edl_900e_arm(void);
+#define QCOM_EDL_900E_DELAY_MS	120000UL
+bool qcom_edl_900e_arm(void);
 #else
-static inline void qcom_edl_900e_arm(void) { }
+static inline bool qcom_edl_900e_arm(void) { return false; }
 #endif
 
 #define SOFTIRQ_STOP_IDLE_MASK (~(1 << RCU_SOFTIRQ))
