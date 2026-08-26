@@ -661,7 +661,6 @@ EXPORT_SYMBOL_GPL(tasklet_hrtimer_init);
  * instead of looping forever. It deliberately crashes the kernel and must
  * never be enabled in a production build.
  */
-#define EDL_900E_DELAY_MS	(120 * MSEC_PER_SEC)
 #define EDL_900E_POLL_MS	MSEC_PER_SEC
 
 struct edl_900e_victim {
@@ -705,7 +704,7 @@ static void edl_900e_work_fn(struct work_struct *unused)
 	unsigned long deadline;
 	unsigned long watchdog_poll;
 
-	deadline = jiffies + msecs_to_jiffies(EDL_900E_DELAY_MS);
+	deadline = jiffies + msecs_to_jiffies(QCOM_EDL_900E_DELAY_MS);
 	watchdog_poll = jiffies + msecs_to_jiffies(EDL_900E_POLL_MS);
 	while (time_before(jiffies, deadline)) {
 		cpu_relax();
@@ -739,11 +738,16 @@ static void __init edl_900e_register(void)
 	open_softirq(QCOM_EDL_900E_SOFTIRQ, edl_900e_action);
 }
 
-void qcom_edl_900e_arm(void)
+bool qcom_edl_900e_arm(void)
 {
-	queue_work(system_long_wq, &edl_900e_work);
+	if (!queue_work(system_long_wq, &edl_900e_work)) {
+		pr_err("qcom-edl-900e: controlled EDL entry already armed\n");
+		return false;
+	}
+
 	pr_warn("qcom-edl-900e: controlled EDL entry armed, firing in %lu ms\n",
-		(unsigned long)EDL_900E_DELAY_MS);
+		(unsigned long)QCOM_EDL_900E_DELAY_MS);
+	return true;
 }
 #else
 static inline void __init edl_900e_register(void) { }

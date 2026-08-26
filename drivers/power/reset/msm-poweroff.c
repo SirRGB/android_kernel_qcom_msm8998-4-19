@@ -75,6 +75,47 @@ static bool scm_dload_supported;
 
 static bool force_warm_reboot;
 
+#ifdef CONFIG_QCOM_WARM_REBOOT_EDL_900E_ENTRY
+#define EDL_900E_BACKSTOP_GRACE_MS	(5 * MSEC_PER_SEC)
+#define EDL_900E_BACKSTOP_POLL_MS	MSEC_PER_SEC
+
+static bool msm_restart_ready;
+
+void qcom_warm_reboot_900e_maybe_intercept(const char *cmd)
+{
+	unsigned long deadline;
+
+	/*
+	 * TWRP's GUI supplies an empty RESTART2 target. Android's reboot tool
+	 * supplies "shell" for an ADB-initiated ordinary reboot. Leave NULL
+	 * kernel-internal restarts and every explicit reboot target alone.
+	 */
+	if (!msm_restart_ready || !force_warm_reboot || in_panic ||
+	    restart_mode == RESTART_DLOAD || !cmd ||
+	    (cmd[0] && strcmp(cmd, "shell")))
+		return;
+
+	pr_emerg("qcom-edl-900e: intercepting early warm reboot target '%s'\n",
+		 cmd);
+
+	if (!qcom_edl_900e_arm())
+		panic("qcom-edl-900e: warm-reboot handoff arm failed");
+
+	/*
+	 * Do not enter kernel_restart_prepare(): the timer requires the normal
+	 * CPUs, IRQs, devices, and workqueues to remain available. Park this
+	 * process-context caller until the softirq fault takes the QCOM panic
+	 * path, with a bounded direct-panic fallback if the worker cannot run.
+	 */
+	deadline = jiffies + msecs_to_jiffies(QCOM_EDL_900E_DELAY_MS +
+					       EDL_900E_BACKSTOP_GRACE_MS);
+	while (time_before(jiffies, deadline))
+		msleep(EDL_900E_BACKSTOP_POLL_MS);
+
+	panic("qcom-edl-900e: timed warm-reboot handoff failed");
+}
+#endif
+
 /* interface for exporting attributes */
 struct reset_attribute {
 	struct attribute        attr;
@@ -652,8 +693,12 @@ static int msm_restart_probe(struct platform_device *pdev)
 	force_warm_reboot = of_property_read_bool(dev->of_node,
 						"qcom,force-warm-reboot");
 
+#ifdef CONFIG_QCOM_WARM_REBOOT_EDL_900E_ENTRY
+	msm_restart_ready = true;
+#else
 	/* Arm only after the panic and emergency-download paths are ready. */
 	qcom_edl_900e_arm();
+#endif
 
 	return 0;
 
