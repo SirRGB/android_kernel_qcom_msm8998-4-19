@@ -139,6 +139,7 @@ struct msm_ssphy_qmp {
 	int			reg_offset_cnt;
 	u32			*qmp_phy_init_seq;
 	int			init_seq_len;
+	unsigned int		init_attempt;
 };
 
 static const struct of_device_id msm_usb_id_table[] = {
@@ -456,7 +457,10 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 					phy);
 	int ret;
 	unsigned int init_timeout_usec = INIT_MAX_TIME_USEC;
+	unsigned int attempt = ++phy->init_attempt;
 	const struct qmp_reg_val *reg = NULL;
+	bool diagnose = of_device_is_compatible(uphy->dev->of_node,
+						"qcom,usb-ssphy-qmp-v2");
 
 	dev_dbg(uphy->dev, "Initializing QMP phy\n");
 
@@ -469,12 +473,26 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 	}
 
 	msm_ssphy_qmp_enable_clks(phy, true);
+	if (diagnose)
+		dev_info(uphy->dev,
+			 "QMP init %u regulators: vdd=%d/%d core=%d/%d\n",
+			 attempt, regulator_is_enabled(phy->vdd),
+			 regulator_get_voltage(phy->vdd),
+			 regulator_is_enabled(phy->core_ldo),
+			 regulator_get_voltage(phy->core_ldo));
 
 	/* select appropriate port select and PHY mode if applicable */
 	usb_qmp_update_portselect_phymode(phy);
 
 	/* power up PHY */
 	usb_qmp_powerup_phy(phy);
+	if (diagnose)
+		dev_info(uphy->dev,
+			 "QMP init %u power: ctrl=%#x status=%#x\n", attempt,
+			 readl_relaxed(phy->base +
+				phy->phy_reg[USB3_PHY_POWER_DOWN_CONTROL]),
+			 readl_relaxed(phy->base +
+				phy->phy_reg[USB3_PHY_PCS_STATUS]));
 
 	reg = (struct qmp_reg_val *)phy->qmp_phy_init_seq;
 
@@ -484,6 +502,11 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 		dev_err(uphy->dev, "Failed the main PHY configuration\n");
 		goto fail;
 	}
+	if (diagnose)
+		dev_info(uphy->dev,
+			 "QMP init %u table: com_clk_select=%#x pcs_rxeq=%#x\n",
+			 attempt, readl_relaxed(phy->base + 0x138),
+			 readl_relaxed(phy->base + 0xcbc));
 
 	/* perform software reset of PHY common logic */
 	if (phy->phy.type == USB_PHY_TYPE_USB3_AND_DP &&
@@ -498,6 +521,16 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 
 	/* Make sure above write completed to bring PHY out of reset */
 	mb();
+	if (diagnose)
+		dev_info(uphy->dev,
+			 "QMP init %u start: reset=%#x start=%#x status=%#x\n",
+			 attempt,
+			 readl_relaxed(phy->base +
+				phy->phy_reg[USB3_PHY_SW_RESET]),
+			 readl_relaxed(phy->base +
+				phy->phy_reg[USB3_PHY_START]),
+			 readl_relaxed(phy->base +
+				phy->phy_reg[USB3_PHY_PCS_STATUS]));
 
 	/* Wait for PHY initialization to be done */
 	do {
@@ -621,6 +654,10 @@ static int msm_ssphy_qmp_reset(struct usb_phy *uphy)
 		dev_err(uphy->dev, "phy_phy_reset deassert failed\n");
 		goto exit;
 	}
+	if (of_device_is_compatible(uphy->dev->of_node,
+				    "qcom,usb-ssphy-qmp-v2"))
+		dev_info(uphy->dev,
+			 "QMP reset: phy_phy and phy assert/deassert succeeded\n");
 
 	return 0;
 
@@ -870,26 +907,49 @@ err:
 
 static void msm_ssphy_qmp_enable_clks(struct msm_ssphy_qmp *phy, bool on)
 {
+	int aux_ret = 0, cfg_ret = 0, pipe_ret = 0;
+	int ref_src_ret = 0, ref_ret = 0, com_aux_ret = 0, parent_ret = 0;
+	bool diagnose = of_device_is_compatible(phy->phy.dev->of_node,
+						"qcom,usb-ssphy-qmp-v2");
+
 	dev_dbg(phy->phy.dev, "%s(): clk_enabled:%d on:%d\n", __func__,
 					phy->clk_enabled, on);
 
 	if (!phy->clk_enabled && on) {
 		if (phy->ref_clk_src)
-			clk_prepare_enable(phy->ref_clk_src);
+			ref_src_ret = clk_prepare_enable(phy->ref_clk_src);
 
 		if (phy->ref_clk)
-			clk_prepare_enable(phy->ref_clk);
+			ref_ret = clk_prepare_enable(phy->ref_clk);
 
 		if (phy->com_aux_clk)
-			clk_prepare_enable(phy->com_aux_clk);
+			com_aux_ret = clk_prepare_enable(phy->com_aux_clk);
 
-		clk_prepare_enable(phy->aux_clk);
+		aux_ret = clk_prepare_enable(phy->aux_clk);
 		if (phy->cfg_ahb_clk)
-			clk_prepare_enable(phy->cfg_ahb_clk);
+			cfg_ret = clk_prepare_enable(phy->cfg_ahb_clk);
 
 		//select PHY pipe clock
-		clk_set_parent(phy->pipe_clk_mux, phy->pipe_clk_ext_src);
-		clk_prepare_enable(phy->pipe_clk);
+		parent_ret = clk_set_parent(phy->pipe_clk_mux,
+					    phy->pipe_clk_ext_src);
+		pipe_ret = clk_prepare_enable(phy->pipe_clk);
+		if (diagnose)
+			dev_info(phy->phy.dev,
+				 "QMP clocks: aux=%d/%lu pipe=%d/%lu "
+				 "cfg=%d/%lu refsrc=%d/%lu ref=%d/%lu "
+				 "comaux=%d/%lu mux=%d/%d/%d\n",
+				 aux_ret, clk_get_rate(phy->aux_clk), pipe_ret,
+				 clk_get_rate(phy->pipe_clk), cfg_ret,
+				 phy->cfg_ahb_clk ?
+					clk_get_rate(phy->cfg_ahb_clk) : 0UL,
+				 ref_src_ret, phy->ref_clk_src ?
+					clk_get_rate(phy->ref_clk_src) : 0UL,
+				 ref_ret, phy->ref_clk ?
+					clk_get_rate(phy->ref_clk) : 0UL,
+				 com_aux_ret, phy->com_aux_clk ?
+					clk_get_rate(phy->com_aux_clk) : 0UL,
+				 !!phy->pipe_clk_mux, !!phy->pipe_clk_ext_src,
+				 parent_ret);
 		phy->clk_enabled = true;
 	}
 
