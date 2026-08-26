@@ -766,6 +766,7 @@ static struct clk_rcg2 mdp_clk_src = {
 	.hid_width = 5,
 	.parent_map = mmcc_parent_map_3,
 	.freq_tbl = ftbl_mdp_clk_src,
+	.enable_safe_config = true,
 	.flags = RECONFIGURE_RCG,
 	.clkr.hw.init = &(struct clk_init_data) {
 		.name = "mdp_clk_src",
