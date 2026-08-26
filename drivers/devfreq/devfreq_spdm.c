@@ -21,6 +21,7 @@
 #include <linux/mutex.h>
 #include <linux/msm-bus.h>
 #include <linux/of.h>
+#include <linux/pm_opp.h>
 #include <linux/platform_device.h>
 
 #include "governor.h"
@@ -388,6 +389,11 @@ static int probe(struct platform_device *pdev)
 	data->profile->get_dev_status = get_dev_status;
 	data->profile->get_cur_freq = get_cur_bw;
 	data->profile->polling_ms = data->window;
+	ret = dev_pm_opp_get_opp_count(&pdev->dev);
+	if (ret <= 0)
+		dev_err(&pdev->dev,
+			"no OPP table for the 4.19 devfreq contract: %d\n",
+			ret);
 
 	data->devfreq =
 	    devfreq_add_device(&pdev->dev, data->profile, "spdm_bw_hyp", data);
