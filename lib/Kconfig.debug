@@ -1024,11 +1024,11 @@ config QCOM_EDL_900E_ENTRY
 	help
 	  Register a one-shot softirq at softirq_init(), then arm it when the
 	  QCOM restart driver has installed the panic and emergency-download
-	  paths. Arming queues long-running work that busy-polls for a fixed two
-	  minutes, then raises the softirq to crash by
+	  paths. Arming queues delayed work for a fixed eight minutes, then raises
+	  the softirq to crash by
 	  dereferencing a global object that was freed without being cleared.
-	  The worker stays runnable so hung-task detection does not apply,
-	  yields when needed, and refreshes the watchdog while polling. Because
+	  Writing "disarm" to /sys/kernel/dload/controlled_edl_900e cancels the
+	  pending endpoint before it commits to the fault. Because
 	  a fault in softirq context is in_interrupt(), the kernel forces a
 	  panic regardless of panic_on_oops; the QCOM panic path then arms the
 	  download-mode cookie and warm-resets into Emergency Download mode,

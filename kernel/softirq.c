@@ -33,8 +33,7 @@
 #ifdef CONFIG_QCOM_EDL_900E_ENTRY
 #include <linux/slab.h>
 #include <linux/jiffies.h>
-#include <linux/nmi.h>
-#include <linux/sched.h>
+#include <linux/mutex.h>
 #include <linux/workqueue.h>
 #endif
 
@@ -647,10 +646,9 @@ EXPORT_SYMBOL_GPL(tasklet_hrtimer_init);
  *
  * A bring-up recovery aid: a one-shot softirq is registered at softirq_init(),
  * then work is queued once the QCOM restart driver has installed the panic and
- * emergency-download paths. The worker busy-polls for a fixed two minutes,
- * then raises the softirq. It remains TASK_RUNNING, so the hung-task detector
- * does not apply; it yields when needed and refreshes the soft-lockup and
- * workqueue watchdogs while polling. A fault in softirq context is
+ * emergency-download paths. Delayed work raises the softirq after a fixed
+ * eight minutes unless userspace disarms the one-shot endpoint first. A fault
+ * in softirq context is
  * in_interrupt(), so the kernel forces a panic regardless of panic_on_oops;
  * the QCOM panic path then arms the download-mode cookie and warm-resets into
  * Emergency Download
@@ -661,8 +659,6 @@ EXPORT_SYMBOL_GPL(tasklet_hrtimer_init);
  * instead of looping forever. It deliberately crashes the kernel and must
  * never be enabled in a production build.
  */
-#define EDL_900E_POLL_MS	MSEC_PER_SEC
-
 struct edl_900e_victim {
 	void (*probe)(struct edl_900e_victim *self);
 	unsigned long token;
@@ -673,6 +669,16 @@ struct edl_900e_victim {
  * published here, then freed without clearing this pointer.
  */
 static struct edl_900e_victim *edl_900e_dangling;
+
+enum edl_900e_state {
+	EDL_900E_IDLE,
+	EDL_900E_ARMED,
+	EDL_900E_CANCELLED,
+	EDL_900E_FIRING,
+};
+
+static atomic_t edl_900e_state = ATOMIC_INIT(EDL_900E_IDLE);
+static DEFINE_MUTEX(edl_900e_lock);
 
 static void edl_900e_action(struct softirq_action *unused)
 {
@@ -701,19 +707,11 @@ static void edl_900e_action(struct softirq_action *unused)
 static void edl_900e_work_fn(struct work_struct *unused)
 {
 	struct edl_900e_victim *victim;
-	unsigned long deadline;
-	unsigned long watchdog_poll;
 
-	deadline = jiffies + msecs_to_jiffies(QCOM_EDL_900E_DELAY_MS);
-	watchdog_poll = jiffies + msecs_to_jiffies(EDL_900E_POLL_MS);
-	while (time_before(jiffies, deadline)) {
-		cpu_relax();
-		cond_resched();
-		if (time_after_eq(jiffies, watchdog_poll)) {
-			touch_softlockup_watchdog();
-			watchdog_poll = jiffies +
-				msecs_to_jiffies(EDL_900E_POLL_MS);
-		}
+	if (atomic_cmpxchg(&edl_900e_state, EDL_900E_ARMED,
+			   EDL_900E_FIRING) != EDL_900E_ARMED) {
+		pr_warn("qcom-edl-900e: controlled EDL trigger cancelled\n");
+		return;
 	}
 
 	victim = kmalloc(sizeof(*victim), GFP_KERNEL);
@@ -731,7 +729,7 @@ static void edl_900e_work_fn(struct work_struct *unused)
 	raise_softirq(QCOM_EDL_900E_SOFTIRQ);
 }
 
-static DECLARE_WORK(edl_900e_work, edl_900e_work_fn);
+static DECLARE_DELAYED_WORK(edl_900e_work, edl_900e_work_fn);
 
 static void __init edl_900e_register(void)
 {
@@ -740,14 +738,68 @@ static void __init edl_900e_register(void)
 
 bool qcom_edl_900e_arm(void)
 {
-	if (!queue_work(system_long_wq, &edl_900e_work)) {
+	bool queued;
+
+	mutex_lock(&edl_900e_lock);
+	if (atomic_cmpxchg(&edl_900e_state, EDL_900E_IDLE,
+			   EDL_900E_ARMED) != EDL_900E_IDLE) {
+		mutex_unlock(&edl_900e_lock);
+		pr_err("qcom-edl-900e: controlled EDL entry not idle\n");
+		return false;
+	}
+
+	queued = queue_delayed_work(system_long_wq, &edl_900e_work,
+				    msecs_to_jiffies(QCOM_EDL_900E_DELAY_MS));
+	if (!queued) {
+		atomic_set(&edl_900e_state, EDL_900E_IDLE);
+		mutex_unlock(&edl_900e_lock);
 		pr_err("qcom-edl-900e: controlled EDL entry already armed\n");
 		return false;
 	}
+	mutex_unlock(&edl_900e_lock);
 
 	pr_warn("qcom-edl-900e: controlled EDL entry armed, firing in %lu ms\n",
 		(unsigned long)QCOM_EDL_900E_DELAY_MS);
 	return true;
+}
+
+bool qcom_edl_900e_disarm(void)
+{
+	int state;
+
+	mutex_lock(&edl_900e_lock);
+	state = atomic_cmpxchg(&edl_900e_state, EDL_900E_ARMED,
+			       EDL_900E_CANCELLED);
+	if (state == EDL_900E_CANCELLED) {
+		mutex_unlock(&edl_900e_lock);
+		return true;
+	}
+	if (state != EDL_900E_ARMED) {
+		mutex_unlock(&edl_900e_lock);
+		pr_err("qcom-edl-900e: controlled EDL entry cannot be disarmed\n");
+		return false;
+	}
+
+	cancel_delayed_work_sync(&edl_900e_work);
+	mutex_unlock(&edl_900e_lock);
+	pr_warn("qcom-edl-900e: controlled EDL entry disarmed\n");
+	return true;
+}
+
+const char *qcom_edl_900e_state_name(void)
+{
+	switch (atomic_read(&edl_900e_state)) {
+	case EDL_900E_IDLE:
+		return "idle";
+	case EDL_900E_ARMED:
+		return "armed";
+	case EDL_900E_CANCELLED:
+		return "cancelled";
+	case EDL_900E_FIRING:
+		return "firing";
+	default:
+		return "invalid";
+	}
 }
 #else
 static inline void __init edl_900e_register(void) { }
