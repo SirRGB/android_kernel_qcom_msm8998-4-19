@@ -18,4 +18,10 @@ void qcom_warm_reboot_900e_maybe_intercept(const char *cmd);
 static inline void qcom_warm_reboot_900e_maybe_intercept(const char *cmd) { }
 #endif
 
+#ifdef CONFIG_QCOM_EDL_9008_HIJACK_900E_ENTRY
+void qcom_edl_9008_maybe_hijack(const char *cmd);
+#else
+static inline void qcom_edl_9008_maybe_hijack(const char *cmd) { }
+#endif
+
 #endif
