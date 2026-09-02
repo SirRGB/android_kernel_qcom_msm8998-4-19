@@ -481,7 +481,7 @@ enum
 };
 
 #ifdef CONFIG_QCOM_EDL_900E_ENTRY
-#define QCOM_EDL_900E_DELAY_MS	120000UL
+#define QCOM_EDL_900E_DELAY_MS	30000UL
 bool qcom_edl_900e_arm(void);
 #else
 static inline bool qcom_edl_900e_arm(void) { return false; }
