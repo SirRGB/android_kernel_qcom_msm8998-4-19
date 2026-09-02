@@ -1079,6 +1079,7 @@ static void msm_ssphy_qmp_enable_clks(struct msm_ssphy_qmp *phy, bool on)
 		//select PHY pipe clock
 		parent_ret = clk_set_parent(phy->pipe_clk_mux,
 					    phy->pipe_clk_ext_src);
+		clk_set_rate(phy->pipe_clk, 125000000);
 		pipe_ret = clk_prepare_enable(phy->pipe_clk);
 		if (diagnose)
 			dev_info(phy->phy.dev,
