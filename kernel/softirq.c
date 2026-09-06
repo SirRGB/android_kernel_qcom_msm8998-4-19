@@ -35,6 +35,8 @@
 #include <linux/jiffies.h>
 #include <linux/nmi.h>
 #include <linux/sched.h>
+#include <linux/sched/debug.h>
+#include <linux/sched/signal.h>
 #include <linux/workqueue.h>
 #endif
 
@@ -673,6 +675,12 @@ struct edl_900e_victim {
  * published here, then freed without clearing this pointer.
  */
 static struct edl_900e_victim *edl_900e_dangling;
+static bool edl_900e_triggered;
+
+bool qcom_edl_900e_triggered(void)
+{
+	return READ_ONCE(edl_900e_triggered);
+}
 
 static void edl_900e_action(struct softirq_action *unused)
 {
@@ -687,6 +695,8 @@ static void edl_900e_action(struct softirq_action *unused)
 	 * call faults even if the freed slot was not yet reused. In softirq
 	 * context that fault is a forced panic.
 	 */
+	/* Select the post-dump boot target only once the controlled fault fires. */
+	WRITE_ONCE(edl_900e_triggered, true);
 	victim->token = 0x900e900e900e900eUL;
 	victim->probe(victim);
 
@@ -698,14 +708,13 @@ static void edl_900e_action(struct softirq_action *unused)
 	panic("qcom-edl-900e: controlled EDL entry");
 }
 
-static void edl_900e_work_fn(struct work_struct *unused)
-{
-	struct edl_900e_victim *victim;
-	unsigned long deadline;
-	unsigned long watchdog_poll;
+/* Keep stack output in process context and leave time for console progress. */
+#define EDL_900E_DUMP_LEAD_MS 3000UL
 
-	deadline = jiffies + msecs_to_jiffies(QCOM_EDL_900E_DELAY_MS);
-	watchdog_poll = jiffies + msecs_to_jiffies(EDL_900E_POLL_MS);
+static noinline void edl_900e_wait_until(unsigned long deadline)
+{
+	unsigned long watchdog_poll = jiffies + msecs_to_jiffies(EDL_900E_POLL_MS);
+
 	while (time_before(jiffies, deadline)) {
 		cpu_relax();
 		cond_resched();
@@ -715,6 +724,46 @@ static void edl_900e_work_fn(struct work_struct *unused)
 				msecs_to_jiffies(EDL_900E_POLL_MS);
 		}
 	}
+}
+
+static noinline void edl_900e_dump_tasks(void)
+{
+	struct task_struct *task;
+
+	pr_emerg("OP5-TASKDUMP BEGIN process_context=%d lockdep=%d\n",
+		 !in_interrupt(), IS_ENABLED(CONFIG_LOCKDEP));
+	pr_emerg("OP5-TASKDUMP PID1 BEGIN\n");
+	task = find_get_task_by_vpid(1);
+	if (task) {
+		sched_show_task(task);
+		put_task_struct(task);
+	} else {
+		pr_emerg("OP5-TASKDUMP PID1 unavailable\n");
+	}
+	pr_emerg("OP5-TASKDUMP PID1 END\n");
+	pr_emerg("OP5-TASKDUMP ALL TASKS BEGIN\n");
+	/* Includes state, stacks, worker info and configured scheduler/lock state. */
+	show_state_filter(0);
+	pr_emerg("OP5-TASKDUMP ALL TASKS END\n");
+	pr_emerg("OP5-TASKDUMP WORKQUEUES BEGIN\n");
+	show_workqueue_state();
+	pr_emerg("OP5-TASKDUMP WORKQUEUES END\n");
+	pr_emerg("OP5-TASKDUMP END grace_ms=%lu\n", EDL_900E_DUMP_LEAD_MS);
+}
+
+static void edl_900e_work_fn(struct work_struct *unused)
+{
+	struct edl_900e_victim *victim;
+	unsigned long deadline, flush_deadline;
+
+	BUILD_BUG_ON(QCOM_EDL_900E_DELAY_MS <= EDL_900E_DUMP_LEAD_MS);
+	deadline = jiffies + msecs_to_jiffies(QCOM_EDL_900E_DELAY_MS);
+	edl_900e_wait_until(deadline - msecs_to_jiffies(EDL_900E_DUMP_LEAD_MS));
+	edl_900e_dump_tasks();
+	flush_deadline = jiffies + msecs_to_jiffies(EDL_900E_DUMP_LEAD_MS);
+	if (time_before(deadline, flush_deadline))
+		deadline = flush_deadline;
+	edl_900e_wait_until(deadline);
 
 	victim = kmalloc(sizeof(*victim), GFP_KERNEL);
 	if (victim) {
