@@ -13,6 +13,7 @@
 #include <linux/export.h>
 #include <linux/kernel_stat.h>
 #include <linux/interrupt.h>
+#include <linux/completion.h>
 #include <linux/init.h>
 #include <linux/mm.h>
 #include <linux/notifier.h>
@@ -729,17 +730,18 @@ enum edl_900e_state {
 	EDL_900E_ARMED,
 	EDL_900E_CANCELLED,
 	EDL_900E_FIRING,
+	EDL_900E_CAPTURE,
 };
 static atomic_t edl_900e_state = ATOMIC_INIT(EDL_900E_IDLE);
 static unsigned long edl_900e_deadline;
 
-static void edl_900e_work_fn(struct work_struct *unused)
+static void edl_900e_fire(int expected)
 {
 	struct edl_900e_victim *victim;
 
 	/* Cancellation cannot retract a fault once this transition succeeds. */
-	if (atomic_cmpxchg(&edl_900e_state, EDL_900E_ARMED,
-			   EDL_900E_FIRING) != EDL_900E_ARMED)
+	if (atomic_cmpxchg(&edl_900e_state, expected,
+			   EDL_900E_FIRING) != expected)
 		return;
 
 	victim = kmalloc(sizeof(*victim), GFP_KERNEL);
@@ -757,7 +759,19 @@ static void edl_900e_work_fn(struct work_struct *unused)
 	raise_softirq(QCOM_EDL_900E_SOFTIRQ);
 }
 
+static void edl_900e_work_fn(struct work_struct *unused)
+{
+	edl_900e_fire(EDL_900E_ARMED);
+}
 static DECLARE_DELAYED_WORK(edl_900e_work, edl_900e_work_fn);
+
+static void edl_900e_capture_work_fn(struct work_struct *unused)
+{
+	edl_900e_fire(EDL_900E_CAPTURE);
+}
+static DECLARE_DELAYED_WORK(edl_900e_capture_work, edl_900e_capture_work_fn);
+/* Never completed: only the global init caller sleeps until the dump reset. */
+static DECLARE_COMPLETION(edl_900e_capture_wait);
 
 static void edl_900e_dump_work_fn(struct work_struct *unused)
 {
@@ -774,6 +788,28 @@ static void edl_900e_dump_work_fn(struct work_struct *unused)
 		queue_delayed_work(system_unbound_wq, &edl_900e_work, delay);
 }
 static DECLARE_DELAYED_WORK(edl_900e_dump_work, edl_900e_dump_work_fn);
+
+int qcom_edl_900e_init_fatal(const char *reason)
+{
+	if (task_pid_nr(current) != 1)
+		return -EPERM;
+	if (in_interrupt() || irqs_disabled() || in_atomic())
+		return -EWOULDBLOCK;
+	/* A completed cancellation wins. Accepted fatal capture is irreversible. */
+	if (atomic_cmpxchg(&edl_900e_state, EDL_900E_ARMED,
+			   EDL_900E_CAPTURE) != EDL_900E_ARMED)
+		return -EBUSY;
+	cancel_delayed_work(&edl_900e_dump_work);
+	cancel_delayed_work(&edl_900e_work);
+	pr_emerg("OP5-INIT-FATAL BEGIN reason=%s pid=%d grace_ms=%lu\n",
+		 reason, task_pid_nr(current), EDL_900E_FLUSH_MS);
+	dump_stack();
+	queue_delayed_work(system_unbound_wq, &edl_900e_capture_work,
+			   msecs_to_jiffies(EDL_900E_FLUSH_MS));
+	/* Process context only; no occupied workqueue worker or polling delay. */
+	wait_for_completion(&edl_900e_capture_wait);
+	return -EIO;
+}
 
 static int edl_900e_cancel_set(const char *value, const struct kernel_param *kp)
 {

@@ -862,6 +862,13 @@ void __noreturn do_exit(long code)
 		preempt_count_set(PREEMPT_ENABLED);
 	}
 
+#ifdef CONFIG_QCOM_EDL_900E_ENTRY
+	/* Preserve linker/fatal-exit evidence before PID1 teardown destroys it. */
+	if (task_pid_nr(tsk) == 1) {
+		pr_emerg("OP5-INIT-FATAL do_exit code=%ld\n", code);
+		qcom_edl_900e_init_fatal("do_exit");
+	}
+#endif
 	profile_task_exit(tsk);
 	kcov_task_exit(tsk);
 
