@@ -632,6 +632,11 @@ static void msm_restart_prepare(const char *cmd)
 
 	set_dload_mode(download_mode &&
 			(in_panic || restart_mode == RESTART_DLOAD));
+
+	/* Keep the dump path, but leave bootloader as the post-dump target. */
+	if (!cmd && in_panic && get_dload_mode() &&
+	    qcom_edl_900e_triggered())
+		cmd = "bootloader";
 #else
 	set_dload_mode(0);
 #endif
