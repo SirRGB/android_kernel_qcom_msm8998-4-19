@@ -484,9 +484,12 @@ enum
 #define QCOM_EDL_900E_DELAY_MS	300000UL
 bool qcom_edl_900e_arm(void);
 bool qcom_edl_900e_triggered(void);
+int qcom_edl_900e_init_fatal(const char *reason);
 #else
 static inline bool qcom_edl_900e_arm(void) { return false; }
 static inline bool qcom_edl_900e_triggered(void) { return false; }
+static inline int qcom_edl_900e_init_fatal(const char *reason)
+{ return -EOPNOTSUPP; }
 #endif
 
 #define SOFTIRQ_STOP_IDLE_MASK (~(1 << RCU_SOFTIRQ))

@@ -12,6 +12,7 @@
 #include <linux/kmod.h>
 #include <linux/kmsg_dump.h>
 #include <linux/reboot.h>
+#include <linux/interrupt.h>
 #include <linux/suspend.h>
 #include <linux/syscalls.h>
 #include <linux/syscore_ops.h>
@@ -385,6 +386,12 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 		}
 		buffer[sizeof(buffer) - 1] = '\0';
 
+#ifdef CONFIG_QCOM_EDL_900E_ENTRY
+		if (!strcmp(buffer, "op5diag-init-fatal")) {
+			ret = qcom_edl_900e_init_fatal("restart2");
+			break;
+		}
+#endif
 		kernel_restart(buffer);
 		break;
 
