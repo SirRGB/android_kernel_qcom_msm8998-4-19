@@ -33,7 +33,7 @@
 #ifdef CONFIG_QCOM_EDL_900E_ENTRY
 #include <linux/slab.h>
 #include <linux/jiffies.h>
-#include <linux/nmi.h>
+#include <linux/moduleparam.h>
 #include <linux/sched.h>
 #include <linux/sched/debug.h>
 #include <linux/sched/signal.h>
@@ -649,21 +649,12 @@ EXPORT_SYMBOL_GPL(tasklet_hrtimer_init);
  *
  * A bring-up recovery aid: a one-shot softirq is registered at softirq_init(),
  * then work is queued once the QCOM restart driver has installed the panic and
- * emergency-download paths. The worker busy-polls for a fixed two minutes,
- * then raises the softirq. It remains TASK_RUNNING, so the hung-task detector
- * does not apply; it yields when needed and refreshes the soft-lockup and
- * workqueue watchdogs while polling. A fault in softirq context is
- * in_interrupt(), so the kernel forces a panic regardless of panic_on_oops;
- * the QCOM panic path then arms the download-mode cookie and warm-resets into
- * Emergency Download
- * mode, which enumerates as Qualcomm USB PID 900E.
- *
- * The only purpose is to escape an init boot loop: a bring-up build that
- * cannot finish init drops into EDL after the delay so it can be reflashed
- * instead of looping forever. It deliberately crashes the kernel and must
- * never be enabled in a production build.
+ * emergency-download paths. Delayed work releases its worker between the
+ * snapshot and fault phases so MM work can make progress. This deliberately
+ * crashes the kernel and must never be enabled in a production build.
  */
-#define EDL_900E_POLL_MS	MSEC_PER_SEC
+#define EDL_900E_DUMP_MS 60000UL
+#define EDL_900E_FLUSH_MS 3000UL
 
 struct edl_900e_victim {
 	void (*probe)(struct edl_900e_victim *self);
@@ -708,24 +699,6 @@ static void edl_900e_action(struct softirq_action *unused)
 	panic("qcom-edl-900e: controlled EDL entry");
 }
 
-/* Keep stack output in process context and leave time for console progress. */
-#define EDL_900E_DUMP_LEAD_MS 3000UL
-
-static noinline void edl_900e_wait_until(unsigned long deadline)
-{
-	unsigned long watchdog_poll = jiffies + msecs_to_jiffies(EDL_900E_POLL_MS);
-
-	while (time_before(jiffies, deadline)) {
-		cpu_relax();
-		cond_resched();
-		if (time_after_eq(jiffies, watchdog_poll)) {
-			touch_softlockup_watchdog();
-			watchdog_poll = jiffies +
-				msecs_to_jiffies(EDL_900E_POLL_MS);
-		}
-	}
-}
-
 static noinline void edl_900e_dump_tasks(void)
 {
 	struct task_struct *task;
@@ -748,22 +721,26 @@ static noinline void edl_900e_dump_tasks(void)
 	pr_emerg("OP5-TASKDUMP WORKQUEUES BEGIN\n");
 	show_workqueue_state();
 	pr_emerg("OP5-TASKDUMP WORKQUEUES END\n");
-	pr_emerg("OP5-TASKDUMP END grace_ms=%lu\n", EDL_900E_DUMP_LEAD_MS);
+	pr_emerg("OP5-TASKDUMP END grace_ms=%lu\n", EDL_900E_FLUSH_MS);
 }
+
+enum edl_900e_state {
+	EDL_900E_IDLE,
+	EDL_900E_ARMED,
+	EDL_900E_CANCELLED,
+	EDL_900E_FIRING,
+};
+static atomic_t edl_900e_state = ATOMIC_INIT(EDL_900E_IDLE);
+static unsigned long edl_900e_deadline;
 
 static void edl_900e_work_fn(struct work_struct *unused)
 {
 	struct edl_900e_victim *victim;
-	unsigned long deadline, flush_deadline;
 
-	BUILD_BUG_ON(QCOM_EDL_900E_DELAY_MS <= EDL_900E_DUMP_LEAD_MS);
-	deadline = jiffies + msecs_to_jiffies(QCOM_EDL_900E_DELAY_MS);
-	edl_900e_wait_until(deadline - msecs_to_jiffies(EDL_900E_DUMP_LEAD_MS));
-	edl_900e_dump_tasks();
-	flush_deadline = jiffies + msecs_to_jiffies(EDL_900E_DUMP_LEAD_MS);
-	if (time_before(deadline, flush_deadline))
-		deadline = flush_deadline;
-	edl_900e_wait_until(deadline);
+	/* Cancellation cannot retract a fault once this transition succeeds. */
+	if (atomic_cmpxchg(&edl_900e_state, EDL_900E_ARMED,
+			   EDL_900E_FIRING) != EDL_900E_ARMED)
+		return;
 
 	victim = kmalloc(sizeof(*victim), GFP_KERNEL);
 	if (victim) {
@@ -780,7 +757,49 @@ static void edl_900e_work_fn(struct work_struct *unused)
 	raise_softirq(QCOM_EDL_900E_SOFTIRQ);
 }
 
-static DECLARE_WORK(edl_900e_work, edl_900e_work_fn);
+static DECLARE_DELAYED_WORK(edl_900e_work, edl_900e_work_fn);
+
+static void edl_900e_dump_work_fn(struct work_struct *unused)
+{
+	unsigned long now, delay = msecs_to_jiffies(EDL_900E_FLUSH_MS);
+
+	if (atomic_read(&edl_900e_state) != EDL_900E_ARMED)
+		return;
+	edl_900e_dump_tasks();
+	now = jiffies;
+	if (time_before(now + delay, edl_900e_deadline))
+		delay = edl_900e_deadline - now;
+	/* A cancellation racing this queue is also checked by the callback. */
+	if (atomic_read(&edl_900e_state) == EDL_900E_ARMED)
+		queue_delayed_work(system_unbound_wq, &edl_900e_work, delay);
+}
+static DECLARE_DELAYED_WORK(edl_900e_dump_work, edl_900e_dump_work_fn);
+
+static int edl_900e_cancel_set(const char *value, const struct kernel_param *kp)
+{
+	bool cancel;
+	int state, ret = kstrtobool(value, &cancel);
+
+	if (ret)
+		return ret;
+	if (!cancel)
+		return -EINVAL;
+	state = atomic_cmpxchg(&edl_900e_state, EDL_900E_ARMED,
+			      EDL_900E_CANCELLED);
+	if (state == EDL_900E_CANCELLED)
+		return 0;
+	if (state != EDL_900E_ARMED)
+		return -EBUSY;
+	cancel_delayed_work(&edl_900e_dump_work);
+	cancel_delayed_work(&edl_900e_work);
+	pr_warn("qcom-edl-900e: pending diagnostic cancelled\n");
+	return 0;
+}
+static const struct kernel_param_ops edl_900e_cancel_ops = {
+	.set = edl_900e_cancel_set,
+};
+module_param_cb(edl_900e_cancel, &edl_900e_cancel_ops, NULL, 0200);
+MODULE_PARM_DESC(edl_900e_cancel, "Write true to cancel pending diagnostic; no rearm");
 
 static void __init edl_900e_register(void)
 {
@@ -789,15 +808,19 @@ static void __init edl_900e_register(void)
 
 bool qcom_edl_900e_arm(void)
 {
-	if (!queue_work(system_long_wq, &edl_900e_work)) {
-		pr_err("qcom-edl-900e: controlled EDL entry already armed\n");
+	BUILD_BUG_ON(QCOM_EDL_900E_DELAY_MS <= EDL_900E_DUMP_MS);
+	if (atomic_cmpxchg(&edl_900e_state, EDL_900E_IDLE,
+			   EDL_900E_ARMED) != EDL_900E_IDLE)
 		return false;
-	}
-
-	pr_warn("qcom-edl-900e: controlled EDL entry armed, firing in %lu ms\n",
-		(unsigned long)QCOM_EDL_900E_DELAY_MS);
+	edl_900e_deadline = jiffies + msecs_to_jiffies(QCOM_EDL_900E_DELAY_MS);
+	if (!queue_delayed_work(system_unbound_wq, &edl_900e_dump_work,
+				msecs_to_jiffies(EDL_900E_DUMP_MS)))
+		return false;
+	pr_warn("qcom-edl-900e: delayed task dump at %lu ms, EDL no earlier than %lu ms\n",
+		EDL_900E_DUMP_MS, (unsigned long)QCOM_EDL_900E_DELAY_MS);
 	return true;
 }
+
 #else
 static inline void __init edl_900e_register(void) { }
 #endif /* CONFIG_QCOM_EDL_900E_ENTRY */
