@@ -34,6 +34,7 @@
 #ifdef CONFIG_QCOM_EDL_900E_ENTRY
 #include <linux/slab.h>
 #include <linux/jiffies.h>
+#include <linux/hrtimer.h>
 #include <linux/moduleparam.h>
 #include <linux/sched.h>
 #include <linux/sched/debug.h>
@@ -649,9 +650,9 @@ EXPORT_SYMBOL_GPL(tasklet_hrtimer_init);
  * Controlled QCOM EDL (900E) entry.
  *
  * A bring-up recovery aid: a one-shot softirq is registered at softirq_init(),
- * then work is queued once the QCOM restart driver has installed the panic and
- * emergency-download paths. Delayed work releases its worker between the
- * snapshot and fault phases so MM work can make progress. This deliberately
+ * then independent hard timers are armed once the QCOM restart driver has
+ * installed the panic and emergency-download paths. Snapshot work is advisory
+ * and cannot postpone either deadline. This deliberately
  * crashes the kernel and must never be enabled in a production build.
  */
 #define EDL_900E_DUMP_MS 60000UL
@@ -678,10 +679,11 @@ static void edl_900e_action(struct softirq_action *unused)
 {
 	struct edl_900e_victim *victim = edl_900e_dangling;
 
-	pr_emerg("qcom-edl-900e: entering controlled EDL from softirq\n");
+	/* No printk or allocation before the latch/fault: either can block. */
+	kfree(victim);
 
 	/*
-	 * edl_900e_work_fn() already freed the object but left this global
+	 * The object was preallocated at arm and just freed, leaving this global
 	 * pointing at it, so the write and the indirect call below run through
 	 * a dangling pointer. probe was set to NULL before the free, so the
 	 * call faults even if the freed slot was not yet reused. In softirq
@@ -731,61 +733,43 @@ enum edl_900e_state {
 	EDL_900E_CANCELLED,
 	EDL_900E_FIRING,
 	EDL_900E_CAPTURE,
+	EDL_900E_PREPARING,
 };
 static atomic_t edl_900e_state = ATOMIC_INIT(EDL_900E_IDLE);
-static unsigned long edl_900e_deadline;
+static struct hrtimer edl_900e_deadline_timer;
+static struct hrtimer edl_900e_capture_timer;
 
-static void edl_900e_fire(int expected)
+static bool edl_900e_fire(int expected)
 {
-	struct edl_900e_victim *victim;
-
-	/* Cancellation cannot retract a fault once this transition succeeds. */
+	/* Atomic winner owns the one preallocated victim. No allocator/worker. */
 	if (atomic_cmpxchg(&edl_900e_state, expected,
 			   EDL_900E_FIRING) != expected)
-		return;
-
-	victim = kmalloc(sizeof(*victim), GFP_KERNEL);
-	if (victim) {
-		victim->probe = NULL;
-		victim->token = 0;
-		edl_900e_dangling = victim;
-		/*
-		 * Free the object but deliberately leave the global set: a
-		 * freed object behind a live pointer.
-		 */
-		kfree(victim);
-	}
-
-	raise_softirq(QCOM_EDL_900E_SOFTIRQ);
+		return false;
+	raise_softirq_irqoff(QCOM_EDL_900E_SOFTIRQ);
+	return true;
 }
 
-static void edl_900e_work_fn(struct work_struct *unused)
+static enum hrtimer_restart edl_900e_deadline_fn(struct hrtimer *unused)
 {
-	edl_900e_fire(EDL_900E_ARMED);
+	/* A capture request never retracts or extends the original deadline. */
+	if (!edl_900e_fire(EDL_900E_ARMED))
+		edl_900e_fire(EDL_900E_CAPTURE);
+	return HRTIMER_NORESTART;
 }
-static DECLARE_DELAYED_WORK(edl_900e_work, edl_900e_work_fn);
 
-static void edl_900e_capture_work_fn(struct work_struct *unused)
+static enum hrtimer_restart edl_900e_capture_fn(struct hrtimer *unused)
 {
 	edl_900e_fire(EDL_900E_CAPTURE);
+	return HRTIMER_NORESTART;
 }
-static DECLARE_DELAYED_WORK(edl_900e_capture_work, edl_900e_capture_work_fn);
 /* Never completed: only the global init caller sleeps until the dump reset. */
 static DECLARE_COMPLETION(edl_900e_capture_wait);
 
 static void edl_900e_dump_work_fn(struct work_struct *unused)
 {
-	unsigned long now, delay = msecs_to_jiffies(EDL_900E_FLUSH_MS);
-
-	if (atomic_read(&edl_900e_state) != EDL_900E_ARMED)
-		return;
-	edl_900e_dump_tasks();
-	now = jiffies;
-	if (time_before(now + delay, edl_900e_deadline))
-		delay = edl_900e_deadline - now;
-	/* A cancellation racing this queue is also checked by the callback. */
 	if (atomic_read(&edl_900e_state) == EDL_900E_ARMED)
-		queue_delayed_work(system_unbound_wq, &edl_900e_work, delay);
+		edl_900e_dump_tasks();
+	/* Advisory only: even an indefinitely blocked dump cannot strand timers. */
 }
 static DECLARE_DELAYED_WORK(edl_900e_dump_work, edl_900e_dump_work_fn);
 
@@ -799,13 +783,13 @@ int qcom_edl_900e_init_fatal(const char *reason)
 	if (atomic_cmpxchg(&edl_900e_state, EDL_900E_ARMED,
 			   EDL_900E_CAPTURE) != EDL_900E_ARMED)
 		return -EBUSY;
+	/* Arm before cancellation, printk or stack walking can block. */
+	hrtimer_start(&edl_900e_capture_timer,
+		      ms_to_ktime(EDL_900E_FLUSH_MS), HRTIMER_MODE_REL_HARD);
 	cancel_delayed_work(&edl_900e_dump_work);
-	cancel_delayed_work(&edl_900e_work);
 	pr_emerg("OP5-INIT-FATAL BEGIN reason=%s pid=%d grace_ms=%lu\n",
 		 reason, task_pid_nr(current), EDL_900E_FLUSH_MS);
 	dump_stack();
-	queue_delayed_work(system_unbound_wq, &edl_900e_capture_work,
-			   msecs_to_jiffies(EDL_900E_FLUSH_MS));
 	/* Process context only; no occupied workqueue worker or polling delay. */
 	wait_for_completion(&edl_900e_capture_wait);
 	return -EIO;
@@ -827,7 +811,8 @@ static int edl_900e_cancel_set(const char *value, const struct kernel_param *kp)
 	if (state != EDL_900E_ARMED)
 		return -EBUSY;
 	cancel_delayed_work(&edl_900e_dump_work);
-	cancel_delayed_work(&edl_900e_work);
+	/* State makes a concurrently running callback inert; never wait on it. */
+	hrtimer_try_to_cancel(&edl_900e_deadline_timer);
 	pr_warn("qcom-edl-900e: pending diagnostic cancelled\n");
 	return 0;
 }
@@ -844,16 +829,28 @@ static void __init edl_900e_register(void)
 
 bool qcom_edl_900e_arm(void)
 {
+	ktime_t deadline;
+
 	BUILD_BUG_ON(QCOM_EDL_900E_DELAY_MS <= EDL_900E_DUMP_MS);
 	if (atomic_cmpxchg(&edl_900e_state, EDL_900E_IDLE,
-			   EDL_900E_ARMED) != EDL_900E_IDLE)
+			   EDL_900E_PREPARING) != EDL_900E_IDLE)
 		return false;
-	edl_900e_deadline = jiffies + msecs_to_jiffies(QCOM_EDL_900E_DELAY_MS);
-	if (!queue_delayed_work(system_unbound_wq, &edl_900e_dump_work,
-				msecs_to_jiffies(EDL_900E_DUMP_MS)))
-		return false;
-	pr_warn("qcom-edl-900e: delayed task dump at %lu ms, EDL no earlier than %lu ms\n",
-		EDL_900E_DUMP_MS, (unsigned long)QCOM_EDL_900E_DELAY_MS);
+	/* No allocation in the deadline path. NULL still faults after the latch. */
+	edl_900e_dangling = kzalloc(sizeof(*edl_900e_dangling), GFP_KERNEL);
+	hrtimer_init(&edl_900e_deadline_timer, CLOCK_MONOTONIC,
+		     HRTIMER_MODE_ABS_HARD);
+	edl_900e_deadline_timer.function = edl_900e_deadline_fn;
+	hrtimer_init(&edl_900e_capture_timer, CLOCK_MONOTONIC,
+		     HRTIMER_MODE_REL_HARD);
+	edl_900e_capture_timer.function = edl_900e_capture_fn;
+	deadline = ktime_add_ms(ktime_get(), QCOM_EDL_900E_DELAY_MS);
+	/* Publish initialized timers/victim before cancellation or fatal capture. */
+	atomic_cmpxchg(&edl_900e_state, EDL_900E_PREPARING, EDL_900E_ARMED);
+	hrtimer_start(&edl_900e_deadline_timer, deadline, HRTIMER_MODE_ABS_HARD);
+	queue_delayed_work(system_unbound_wq, &edl_900e_dump_work,
+			   msecs_to_jiffies(EDL_900E_DUMP_MS));
+	pr_warn("qcom-edl-900e: independent hard deadline %lu ms, advisory dump %lu ms\n",
+		(unsigned long)QCOM_EDL_900E_DELAY_MS, EDL_900E_DUMP_MS);
 	return true;
 }
 
