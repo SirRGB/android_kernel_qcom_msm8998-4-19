@@ -775,3 +775,6 @@ CONFIG_QCOM_DLOAD_MODE=y
 
 # Retain the one-shot pre-panic task dump in the DDR printk ring.
 CONFIG_LOG_BUF_SHIFT=21
+
+# Diagnostic compatibility probe: retain actual release for ordinary tasks.
+CONFIG_FAKE_UNAME_5_4=y
