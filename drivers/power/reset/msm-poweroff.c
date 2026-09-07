@@ -80,6 +80,102 @@ static bool scm_dload_supported;
 
 static bool force_warm_reboot;
 
+#if IS_ENABLED(CONFIG_QCOM_EDL_ON_DEMAND)
+#include <soc/qcom/edl-on-demand.h>
+
+/* Built-in lifetime even when the confirmation interface is a module. */
+static void __iomem *ondemand_cookie;
+#ifdef CONFIG_RANDOMIZE_BASE
+static void __iomem *ondemand_kaslr;
+#endif
+static bool ondemand_ready;
+static bool ondemand_firing;
+static atomic_t ondemand_requested = ATOMIC_INIT(0);
+
+static void ondemand_panic(unsigned long unused)
+{
+	/* Only the accepted explicit API call can schedule this tasklet. */
+	WRITE_ONCE(ondemand_firing, true);
+	panic("qcom-edl-on-demand: explicitly requested full-DDR diagnostic");
+}
+static DECLARE_TASKLET(ondemand_tasklet, ondemand_panic, 0);
+
+int qcom_edl_request_full_dump(void)
+{
+	if (!smp_load_acquire(&ondemand_ready))
+		return -ENODEV;
+	/* Preserve the physically tested timeout; never change a global knob. */
+	if (READ_ONCE(panic_timeout) != 5)
+		return -EINVAL;
+	if (atomic_cmpxchg(&ondemand_requested, 0, 1))
+		return -EALREADY;
+
+	tasklet_schedule(&ondemand_tasklet);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(qcom_edl_request_full_dump);
+
+static void __iomem *ondemand_map(struct device *dev, const char *compatible,
+				 size_t minimum)
+{
+	struct device_node *np;
+	struct resource res;
+	int ret;
+
+	np = of_find_compatible_node(NULL, NULL, compatible);
+	if (!np)
+		return NULL;
+	ret = of_address_to_resource(np, 0, &res);
+	of_node_put(np);
+	if (ret || resource_size(&res) < minimum)
+		return NULL;
+	return devm_ioremap(dev, res.start, resource_size(&res));
+}
+
+static void ondemand_prepare_support(struct device *dev)
+{
+	/* Refuse unsupported SCM instead of inventing a firmware fallback. */
+	if (!restart_reason ||
+	    scm_is_call_available(SCM_SVC_BOOT, 0x10) <= 0)
+		return;
+	ondemand_cookie = ondemand_map(dev, "qcom,msm-imem-download_mode", 8);
+	if (!ondemand_cookie)
+		return;
+#ifdef CONFIG_RANDOMIZE_BASE
+	ondemand_kaslr = ondemand_map(dev, KASLR_OFFSET_PROP, 12);
+	if (!ondemand_kaslr)
+		return;
+#endif
+	/* No cookie/SCM mode write here: only retain the capability. */
+	smp_store_release(&ondemand_ready, true);
+	dev_notice(dev, "on-demand EDL capability retained; not armed\n");
+}
+
+static void ondemand_set_full_dump(void)
+{
+	struct scm_desc desc = {
+		.args[0] = 0x10, /* SCM_DLOAD_FULLDUMP, not emergency 9008. */
+		.args[1] = 0,
+		.arginfo = SCM_ARGS(2),
+	};
+	int ret;
+
+#ifdef CONFIG_RANDOMIZE_BASE
+	__raw_writel(0xdead4ead, ondemand_kaslr);
+	__raw_writel(KASLR_OFFSET_BIT_MASK & (kimage_vaddr - KIMAGE_VADDR),
+		     ondemand_kaslr + 4);
+	__raw_writel(KASLR_OFFSET_BIT_MASK &
+		     ((kimage_vaddr - KIMAGE_VADDR) >> 32), ondemand_kaslr + 8);
+#endif
+	__raw_writel(0xE47B337D, ondemand_cookie);
+	__raw_writel(0xCE14091A, ondemand_cookie + 4);
+	mb();
+	ret = scm_call2_atomic(SCM_SIP_FNID(SCM_SVC_BOOT, 0x10), &desc);
+	if (ret)
+		pr_emerg("on-demand EDL: secure full-dump request failed: %d\n", ret);
+}
+#endif
+
 #if defined(CONFIG_QCOM_WARM_REBOOT_EDL_900E_ENTRY) || \
 	defined(CONFIG_QCOM_EDL_9008_HIJACK_900E_ENTRY)
 #define EDL_900E_BACKSTOP_GRACE_MS	(5 * MSEC_PER_SEC)
@@ -624,6 +720,15 @@ static void halt_spmi_pmic_arbiter(void)
 static void msm_restart_prepare(const char *cmd)
 {
 	bool need_warm_reset = false;
+#if IS_ENABLED(CONFIG_QCOM_EDL_ON_DEMAND)
+	bool ondemand = !cmd && READ_ONCE(ondemand_firing);
+
+	if (ondemand) {
+		ondemand_set_full_dump();
+		cmd = "bootloader";
+		need_warm_reset = true;
+	} else
+#endif
 #ifdef CONFIG_QCOM_DLOAD_MODE
 	/* Write download mode flags if we're panic'ing
 	 * Write download mode flags if restart_mode says so
@@ -646,6 +751,11 @@ static void msm_restart_prepare(const char *cmd)
 		need_warm_reset = (get_dload_mode() ||
 				(cmd != NULL && cmd[0] != '\0'));
 	}
+
+#if IS_ENABLED(CONFIG_QCOM_EDL_ON_DEMAND)
+	if (ondemand)
+		need_warm_reset = true;
+#endif
 
 	if (force_warm_reboot)
 		pr_info("Forcing a warm reset of the system\n");
@@ -739,6 +849,11 @@ static void do_msm_restart(enum reboot_mode reboot_mode, const char *cmd)
 
 	msm_restart_prepare(cmd);
 
+#if IS_ENABLED(CONFIG_QCOM_EDL_ON_DEMAND)
+	if (!cmd && READ_ONCE(ondemand_firing))
+		msm_trigger_wdog_bite();
+#endif
+
 #ifdef CONFIG_QCOM_DLOAD_MODE
 	/*
 	 * Trigger a watchdog bite here and if this fails,
@@ -819,7 +934,11 @@ static int msm_restart_probe(struct platform_device *pdev)
 		scm_disable_sdi();
 #else
 	set_dload_mode(0);
-	scm_disable_sdi();
+#if IS_ENABLED(CONFIG_QCOM_EDL_ON_DEMAND)
+	ondemand_prepare_support(dev);
+	if (!smp_load_acquire(&ondemand_ready))
+#endif
+		scm_disable_sdi();
 #endif
 
 	force_warm_reboot = of_property_read_bool(dev->of_node,
@@ -856,6 +975,10 @@ static struct platform_driver msm_restart_driver = {
 	.probe = msm_restart_probe,
 	.driver = {
 		.name = "msm-restart",
+#if IS_ENABLED(CONFIG_QCOM_EDL_ON_DEMAND)
+		/* Backend mappings outlive every control-module instance. */
+		.suppress_bind_attrs = true,
+#endif
 		.of_match_table = of_match_ptr(of_msm_restart_match),
 	},
 };

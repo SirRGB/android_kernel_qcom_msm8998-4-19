@@ -149,6 +149,32 @@ config POWER_RESET_QCOM
 	  Say Y here if you have a Qualcomm Tecnologies, Inc. board and wish to
 	  enable restart driver.
 
+config QCOM_EDL_ON_DEMAND
+	tristate "Explicit one-shot Qualcomm full-DDR diagnostic"
+	depends on POWER_RESET_QCOM && ARM64 && DEBUG_KERNEL
+	depends on QCOM_SCM && QCOM_WATCHDOG_V2
+	depends on QCOM_FORCE_WDOG_BITE_ON_PANIC
+	depends on !QCOM_DLOAD_MODE && !CRASH_DUMP && !MODULE_FORCE_UNLOAD
+	depends on !QCOM_EDL_900E_ENTRY
+	depends on !QCOM_WARM_REBOOT_EDL_900E_ENTRY
+	depends on !QCOM_EDL_9008_HIJACK_900E_ENTRY
+	default n
+	help
+	  Review-only destructive diagnostic. Even M retains built-in restart
+	  plumbing and preserves secure debug capability at boot; unloading the
+	  control module cannot undo that hardware state. N retains normal boot
+	  behavior. No download cookies or trigger are armed at probe or load.
+
+	  A root-only exact confirmation write requests one controlled panic,
+	  full-DDR download and post-dump bootloader target. The existing panic
+	  timeout must be five seconds. The existing watchdog bite is used only
+	  for the explicitly requested panic. Ordinary panic/restart requests
+	  retain their normal paths. Hardware success is not guaranteed.
+
+	  Do not enable in production configurations. With M the control device
+	  is provided by qcom-edl-on-demand. It can be unloaded before a request;
+	  accepted requests cannot be cancelled or safely unloaded.
+
 config QCOM_DLOAD_MODE
 	bool "Qualcomm Technologies, Inc. download mode"
 	depends on POWER_RESET_QCOM
