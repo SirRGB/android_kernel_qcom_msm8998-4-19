@@ -81,9 +81,11 @@ static bool scm_dload_supported;
 static bool force_warm_reboot;
 
 #if IS_ENABLED(CONFIG_QCOM_EDL_ON_DEMAND)
-#include <soc/qcom/edl-on-demand.h>
+#include <linux/capability.h>
+#include <linux/cred.h>
+#include <linux/user_namespace.h>
 
-/* Built-in lifetime even when the confirmation interface is a module. */
+/* Built-in backend and parameter lifetime; no exported trigger API. */
 static void __iomem *ondemand_cookie;
 #ifdef CONFIG_RANDOMIZE_BASE
 static void __iomem *ondemand_kaslr;
@@ -94,26 +96,47 @@ static atomic_t ondemand_requested = ATOMIC_INIT(0);
 
 static void ondemand_panic(unsigned long unused)
 {
-	/* Only the accepted explicit API call can schedule this tasklet. */
+	/* Only the accepted post-readiness parameter write can schedule this tasklet. */
 	WRITE_ONCE(ondemand_firing, true);
 	panic("qcom-edl-on-demand: explicitly requested full-DDR diagnostic");
 }
 static DECLARE_TASKLET(ondemand_tasklet, ondemand_panic, 0);
 
-int qcom_edl_request_full_dump(void)
+#define ONDEMAND_CONFIRM "CONFIRM_QCOM_FULL_DDR_ONCE\n"
+
+static int ondemand_confirm_set(const char *value,
+			       const struct kernel_param *kp)
 {
-	if (!smp_load_acquire(&ondemand_ready))
+	/* Boot-argument parsing precedes both probe and SYSTEM_RUNNING. */
+	if (READ_ONCE(system_state) != SYSTEM_RUNNING ||
+	    !smp_load_acquire(&ondemand_ready))
 		return -ENODEV;
+	if (!uid_eq(current_euid(), GLOBAL_ROOT_UID) ||
+	    !ns_capable(&init_user_ns, CAP_SYS_BOOT))
+		return -EPERM;
+	/* params.c supplies a C string, not the original sysfs write count. */
+	if (!value || strnlen(value, sizeof(ONDEMAND_CONFIRM)) !=
+	    sizeof(ONDEMAND_CONFIRM) - 1 ||
+	    memcmp(value, ONDEMAND_CONFIRM, sizeof(ONDEMAND_CONFIRM) - 1))
+		return -EINVAL;
 	/* Preserve the physically tested timeout; never change a global knob. */
 	if (READ_ONCE(panic_timeout) != 5)
 		return -EINVAL;
 	if (atomic_cmpxchg(&ondemand_requested, 0, 1))
 		return -EALREADY;
 
+	pr_emerg("qcom-edl-on-demand: accepted explicit intent uid=%u pid=%d\n",
+		 __kuid_val(current_euid()), task_pid_nr(current));
 	tasklet_schedule(&ondemand_tasklet);
 	return 0;
 }
-EXPORT_SYMBOL_GPL(qcom_edl_request_full_dump);
+
+static const struct kernel_param_ops ondemand_param_ops = {
+	.set = ondemand_confirm_set,
+};
+module_param_cb(edl_full_dump, &ondemand_param_ops, NULL, 0200);
+MODULE_PARM_DESC(edl_full_dump,
+		"Post-readiness root-only one-shot full-DDR confirmation");
 
 static void __iomem *ondemand_map(struct device *dev, const char *compatible,
 				 size_t minimum)
@@ -976,7 +999,7 @@ static struct platform_driver msm_restart_driver = {
 	.driver = {
 		.name = "msm-restart",
 #if IS_ENABLED(CONFIG_QCOM_EDL_ON_DEMAND)
-		/* Backend mappings outlive every control-module instance. */
+		/* Built-in parameter callbacks require nonremovable mappings. */
 		.suppress_bind_attrs = true,
 #endif
 		.of_match_table = of_match_ptr(of_msm_restart_match),
