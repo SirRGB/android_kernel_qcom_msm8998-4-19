@@ -391,6 +391,9 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 			ret = qcom_edl_900e_init_fatal("restart2");
 			break;
 		}
+		/* Diagnostic only: preserve PID1 RESTART2 evidence before teardown. */
+		if (task_pid_nr(current) == 1)
+			qcom_edl_900e_init_fatal(buffer);
 #endif
 		kernel_restart(buffer);
 		break;
