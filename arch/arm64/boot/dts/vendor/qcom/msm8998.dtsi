@@ -2040,7 +2040,8 @@
 	};
 
 	ssphy: ssphy@c010000 {
-		compatible = "qcom,usb-ssphy-qmp-v2";
+		compatible = "qcom,msm8998-usb-ssphy-qmp-v2",
+			     "qcom,usb-ssphy-qmp-v2";
 		reg = <0x0c010000 0xe0c>,
 		      <0x01fcb244 0x4>,
 		      <0x01fcb248 0x4>;
