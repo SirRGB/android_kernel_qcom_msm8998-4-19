@@ -3688,7 +3688,8 @@ static inline int get_cid_from_rpdev(struct rpmsg_device *rpdev)
 		cid = ADSP_DOMAIN_ID;
 	else if (!strcmp(rpdev->dev.parent->of_node->name, "dsps"))
 		cid = SDSP_DOMAIN_ID;
-	else if (!strcmp(rpdev->dev.parent->of_node->name, "mdsp"))
+	else if (!strcmp(rpdev->dev.parent->of_node->name, "mdsp") ||
+		 !strcmp(rpdev->dev.parent->of_node->name, "modem"))
 		cid = MDSP_DOMAIN_ID;
 
 	return cid;
