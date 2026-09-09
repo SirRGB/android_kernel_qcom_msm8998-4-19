@@ -14,6 +14,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/usb/phy.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/extcon.h>
 #include <linux/reset.h>
 
@@ -27,16 +28,22 @@ enum core_ldo_levels {
 
 /* MSM8998 QSERDES v3 common status registers */
 #define MSM8998_QSERDES_COM_BIAS_EN_CLKBUFLR_EN	0x034
+#define MSM8998_QSERDES_COM_CLK_ENABLE1		0x038
 #define MSM8998_QSERDES_COM_SYS_CLK_CTRL		0x03c
+#define MSM8998_QSERDES_COM_SYSCLK_BUF_ENABLE	0x040
 #define MSM8998_QSERDES_COM_PLL_IVCO		0x048
 #define MSM8998_QSERDES_COM_SYSCLK_DET_COMP_STATUS	0x058
+#define MSM8998_QSERDES_COM_SYSCLK_EN_SEL	0x080
 #define MSM8998_QSERDES_COM_RESETSM_CNTRL	0x088
+#define MSM8998_QSERDES_COM_RESETSM_CNTRL2	0x08c
 #define MSM8998_QSERDES_COM_LOCK_CMP_EN		0x090
 #define MSM8998_QSERDES_COM_LOCK_CMP_CFG		0x094
 #define MSM8998_QSERDES_COM_CMN_STATUS		0x124
 #define MSM8998_QSERDES_COM_RESET_SM_STATUS	0x128
 #define MSM8998_QSERDES_COM_CLK_SELECT		0x138
 #define MSM8998_QSERDES_COM_C_READY_STATUS	0x158
+#define MSM8998_QSERDES_COM_CMN_CONFIG		0x15c
+#define MSM8998_QSERDES_COM_SVS_MODE_CLK_SEL	0x164
 
 /* default CORE votlage and load values */
 #define USB_SSPHY_1P2_VOL_MIN		1200000 /* uV */
@@ -125,16 +132,24 @@ struct msm8998_qmp_snapshot {
 	u32 reset_sm;
 	u32 c_ready;
 	u32 bias;
+	u32 clk_enable1;
 	u32 sys_clk_ctrl;
+	u32 sysclk_buf_enable;
 	u32 pll_ivco;
+	u32 sysclk_en_sel;
 	u32 resetsm_ctrl;
+	u32 resetsm_ctrl2;
 	u32 lock_cmp_en;
 	u32 lock_cmp_cfg;
 	u32 clk_select;
+	u32 cmn_config;
+	u32 svs_mode_clk_sel;
 	u32 power;
 	u32 sw_reset;
 	u32 start;
 	u32 typec;
+	u32 tcsr_mode;
+	u32 clocks_enabled;
 };
 
 struct msm_ssphy_qmp {
@@ -205,6 +220,11 @@ static void usb_qmp_powerup_phy(struct msm_ssphy_qmp *phy);
 static void msm_ssphy_qmp_enable_clks(struct msm_ssphy_qmp *phy, bool on);
 static int msm_ssphy_qmp_reset(struct usb_phy *uphy);
 
+static bool msm8998_qmp_clock_enabled(struct clk *clk)
+{
+	return clk && __clk_is_enabled(clk);
+}
+
 static void msm8998_qmp_snapshot(struct msm_ssphy_qmp *phy,
 				 unsigned int attempt, const char *stage)
 {
@@ -222,18 +242,30 @@ static void msm8998_qmp_snapshot(struct msm_ssphy_qmp *phy,
 			MSM8998_QSERDES_COM_C_READY_STATUS);
 	snapshot.bias = readl_relaxed(phy->base +
 			MSM8998_QSERDES_COM_BIAS_EN_CLKBUFLR_EN);
+	snapshot.clk_enable1 = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_CLK_ENABLE1);
 	snapshot.sys_clk_ctrl = readl_relaxed(phy->base +
 			MSM8998_QSERDES_COM_SYS_CLK_CTRL);
+	snapshot.sysclk_buf_enable = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_SYSCLK_BUF_ENABLE);
 	snapshot.pll_ivco = readl_relaxed(phy->base +
 			MSM8998_QSERDES_COM_PLL_IVCO);
+	snapshot.sysclk_en_sel = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_SYSCLK_EN_SEL);
 	snapshot.resetsm_ctrl = readl_relaxed(phy->base +
 			MSM8998_QSERDES_COM_RESETSM_CNTRL);
+	snapshot.resetsm_ctrl2 = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_RESETSM_CNTRL2);
 	snapshot.lock_cmp_en = readl_relaxed(phy->base +
 			MSM8998_QSERDES_COM_LOCK_CMP_EN);
 	snapshot.lock_cmp_cfg = readl_relaxed(phy->base +
 			MSM8998_QSERDES_COM_LOCK_CMP_CFG);
 	snapshot.clk_select = readl_relaxed(phy->base +
 			MSM8998_QSERDES_COM_CLK_SELECT);
+	snapshot.cmn_config = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_CMN_CONFIG);
+	snapshot.svs_mode_clk_sel = readl_relaxed(phy->base +
+			MSM8998_QSERDES_COM_SVS_MODE_CLK_SEL);
 	snapshot.power = readl_relaxed(phy->base +
 			phy->phy_reg[USB3_PHY_POWER_DOWN_CONTROL]);
 	snapshot.sw_reset = readl_relaxed(phy->base +
@@ -242,6 +274,13 @@ static void msm8998_qmp_snapshot(struct msm_ssphy_qmp *phy,
 			phy->phy_reg[USB3_PHY_START]);
 	snapshot.typec = readl_relaxed(phy->base +
 			phy->phy_reg[USB3_PHY_PCS_MISC_TYPEC_CTRL]);
+	snapshot.tcsr_mode = phy->tcsr_usb3_dp_phymode ?
+		readl_relaxed(phy->tcsr_usb3_dp_phymode) : U32_MAX;
+	snapshot.clocks_enabled = msm8998_qmp_clock_enabled(phy->ref_clk_src) |
+		(msm8998_qmp_clock_enabled(phy->ref_clk) << 1) |
+		(msm8998_qmp_clock_enabled(phy->aux_clk) << 2) |
+		(msm8998_qmp_clock_enabled(phy->cfg_ahb_clk) << 3) |
+		(msm8998_qmp_clock_enabled(phy->pipe_clk) << 4);
 
 	dev_info(phy->phy.dev,
 		 "QMP %u %s status: pcs=%08x sys=%08x cmn=%08x rst=%08x rdy=%08x\n",
@@ -253,6 +292,13 @@ static void msm8998_qmp_snapshot(struct msm_ssphy_qmp *phy,
 		 snapshot.pll_ivco, snapshot.resetsm_ctrl,
 		 snapshot.lock_cmp_en, snapshot.lock_cmp_cfg,
 		 snapshot.clk_select);
+	dev_info(phy->phy.dev,
+		 "QMP %u %s inputs: en1=%08x buf=%08x ensel=%08x rsm2=%08x cfg=%08x svs=%08x clks=%02x tcsr=%08x\n",
+		 attempt, stage, snapshot.clk_enable1,
+		 snapshot.sysclk_buf_enable, snapshot.sysclk_en_sel,
+		 snapshot.resetsm_ctrl2, snapshot.cmn_config,
+		 snapshot.svs_mode_clk_sel, snapshot.clocks_enabled,
+		 snapshot.tcsr_mode);
 	dev_info(phy->phy.dev,
 		 "QMP %u %s ctl: pwr=%08x rst=%08x start=%08x typec=%08x\n",
 		 attempt, stage, snapshot.power, snapshot.sw_reset,
