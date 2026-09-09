@@ -765,4 +765,7 @@ CONFIG_DEBUG_ALIGN_RODATA=y
 
 # Required for Android BPF loading; ordinary uname remains unchanged.
 CONFIG_FAKE_UNAME_5_4=y
+# CONFIG_QCOM_EDL_900E_ENTRY is not set
+# CONFIG_QCOM_WARM_REBOOT_EDL_900E_ENTRY is not set
+# CONFIG_QCOM_EDL_9008_HIJACK_900E_ENTRY is not set
 # CONFIG_QCOM_DLOAD_MODE is not set
