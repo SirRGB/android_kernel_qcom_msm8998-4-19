@@ -8,6 +8,8 @@
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
+#include <linux/nmi.h>
+#include <linux/sched.h>
 
 #include <linux/io.h>
 #include <linux/of.h>
@@ -78,12 +80,16 @@ static bool scm_dload_supported;
 
 static bool force_warm_reboot;
 
-#ifdef CONFIG_QCOM_WARM_REBOOT_EDL_900E_ENTRY
+#if defined(CONFIG_QCOM_WARM_REBOOT_EDL_900E_ENTRY) || \
+	defined(CONFIG_QCOM_EDL_9008_HIJACK_900E_ENTRY)
 #define EDL_900E_BACKSTOP_GRACE_MS	(5 * MSEC_PER_SEC)
 #define EDL_900E_BACKSTOP_POLL_MS	MSEC_PER_SEC
 
+/* Set once the panic and download-mode paths the timer needs are installed. */
 static bool msm_restart_ready;
+#endif
 
+#ifdef CONFIG_QCOM_WARM_REBOOT_EDL_900E_ENTRY
 void qcom_warm_reboot_900e_maybe_intercept(const char *cmd)
 {
 	unsigned long deadline;
@@ -121,6 +127,61 @@ void qcom_warm_reboot_900e_maybe_intercept(const char *cmd)
 		msleep(EDL_900E_BACKSTOP_POLL_MS);
 
 	panic("qcom-edl-900e: timed warm-reboot handoff failed");
+}
+#endif
+
+#ifdef CONFIG_QCOM_EDL_9008_HIJACK_900E_ENTRY
+/*
+ * Park the calling context until the armed timer takes the QCOM panic path.
+ * This busy-polls rather than sleeping: a caller that keeps polling has been
+ * observed to prevent emergency-download (9008) entry, which is the outcome
+ * this hijack exists to replace. The loop stays TASK_RUNNING, yields when
+ * needed, and refreshes the soft-lockup watchdog, so nothing else declares the
+ * caller stuck. A bounded direct panic is the backstop if the timer's worker
+ * never runs.
+ */
+static void qcom_edl_9008_park(void)
+{
+	unsigned long deadline;
+	unsigned long watchdog_poll;
+
+	deadline = jiffies + msecs_to_jiffies(QCOM_EDL_900E_DELAY_MS +
+					       EDL_900E_BACKSTOP_GRACE_MS);
+	watchdog_poll = jiffies + msecs_to_jiffies(EDL_900E_BACKSTOP_POLL_MS);
+	while (time_before(jiffies, deadline)) {
+		cpu_relax();
+		cond_resched();
+		if (time_after_eq(jiffies, watchdog_poll)) {
+			touch_softlockup_watchdog();
+			watchdog_poll = jiffies +
+				msecs_to_jiffies(EDL_900E_BACKSTOP_POLL_MS);
+		}
+	}
+
+	panic("qcom-edl-9008-hijack: timed 900E handoff failed");
+}
+
+void qcom_edl_9008_maybe_hijack(const char *cmd)
+{
+	/*
+	 * Recognize exactly the target msm_restart_prepare() would turn into
+	 * an emergency download. Leave kernel-internal restarts, the panic
+	 * path, and every other reboot target alone.
+	 */
+	if (!msm_restart_ready || in_panic || !cmd || strncmp(cmd, "edl", 3))
+		return;
+
+	pr_emerg("qcom-edl-9008-hijack: claiming emergency-download target '%s', forcing 900E\n",
+		 cmd);
+
+	if (!qcom_edl_900e_arm())
+		panic("qcom-edl-9008-hijack: controlled 900E arm failed");
+
+	/*
+	 * Do not enter kernel_restart_prepare(): the timer requires the normal
+	 * CPUs, IRQs, devices, and workqueues to remain available.
+	 */
+	qcom_edl_9008_park();
 }
 #endif
 
@@ -240,6 +301,17 @@ static bool get_dload_mode(void)
 static void enable_emergency_dload_mode(void)
 {
 	int ret;
+
+	/*
+	 * The cookie programmed below is what selects emergency download
+	 * (9008). With the hijack built in, an "edl" target is claimed earlier
+	 * in kernel_restart(), and no later caller may reselect 9008 behind
+	 * that decision.
+	 */
+	if (IS_ENABLED(CONFIG_QCOM_EDL_9008_HIJACK_900E_ENTRY)) {
+		pr_emerg("qcom-edl-9008-hijack: refusing emergency-download cookie\n");
+		return;
+	}
 
 	if (emergency_dload_mode_addr) {
 		__raw_writel(EMERGENCY_DLOAD_MAGIC1,
@@ -741,9 +813,10 @@ static int msm_restart_probe(struct platform_device *pdev)
 	if (force_warm_reboot)
 		qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
 
-#ifdef CONFIG_QCOM_WARM_REBOOT_EDL_900E_ENTRY
+#if defined(CONFIG_QCOM_WARM_REBOOT_EDL_900E_ENTRY) || \
+	defined(CONFIG_QCOM_EDL_9008_HIJACK_900E_ENTRY)
 	msm_restart_ready = true;
-	dev_info(dev, "qcom-edl-900e: warm-reboot interceptor ready, force-warm=%d\n",
+	dev_info(dev, "qcom-edl-900e: restart interceptor ready, force-warm=%d\n",
 		 force_warm_reboot);
 #else
 	/* Arm only after the panic and emergency-download paths are ready. */
