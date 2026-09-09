@@ -167,6 +167,9 @@ static int ngd_slim_qmi_new_server(struct qmi_handle *hdl,
 		container_of(qmi, struct msm_slim_ctrl, qmi);
 
 	SLIM_INFO(dev, "Slimbus QMI new server event received\n");
+	dev_info(dev->dev,
+		 "audio-diag: SLIMbus QMI server up node=%u port=%u\n",
+		 service->node, service->port);
 	qmi->svc_info.sq_family = AF_QIPCRTR;
 	qmi->svc_info.sq_node = service->node;
 	qmi->svc_info.sq_port = service->port;
@@ -183,6 +186,9 @@ static void ngd_slim_qmi_del_server(struct qmi_handle *hdl,
 	struct msm_slim_ctrl *dev =
 		container_of(qmi, struct msm_slim_ctrl, qmi);
 
+	dev_info(dev->dev,
+		 "audio-diag: SLIMbus QMI server down node=%u port=%u\n",
+		 service->node, service->port);
 	reinit_completion(&dev->qmi_up);
 	qmi->svc_info.sq_node = 0;
 	qmi->svc_info.sq_port = 0;
@@ -195,6 +201,8 @@ static struct qmi_ops ngd_slim_qmi_svc_event_ops = {
 
 static int ngd_slim_qmi_svc_event_init(struct msm_slim_qmi *qmi)
 {
+	struct msm_slim_ctrl *dev =
+		container_of(qmi, struct msm_slim_ctrl, qmi);
 	int ret = 0;
 
 	ret = qmi_handle_init(&qmi->svc_event_hdl, 0,
@@ -209,6 +217,11 @@ static int ngd_slim_qmi_svc_event_init(struct msm_slim_qmi *qmi)
 	if (ret < 0) {
 		pr_err("%s: qmi_add_lookup failed: %d\n", __func__, ret);
 		qmi_handle_release(&qmi->svc_event_hdl);
+	} else {
+		dev_info(dev->dev,
+			 "audio-diag: SLIMbus QMI lookup registered svc=%u ver=%u inst=%u\n",
+			 SLIMBUS_QMI_SVC_ID, SLIMBUS_QMI_SVC_V1,
+			 SLIMBUS_QMI_INS_ID);
 	}
 	return ret;
 }
@@ -1605,6 +1618,9 @@ static int ngd_slim_rx_msgq_thread(void *data)
 		txn.wbuf = wbuf;
 		txn.len = 4;
 		SLIM_INFO(dev, "SLIM SAT: Rcvd master capability\n");
+		dev_info(dev->dev,
+			 "audio-diag: SLIM master capability received state=%d\n",
+			 dev->state);
 capability_retry:
 		txn.rl = 8;
 		ret = ngd_xfer_msg(&dev->ctrl, &txn);
@@ -1613,6 +1629,9 @@ capability_retry:
 
 			SLIM_INFO(dev,
 				"SLIM SAT: capability exchange successful\n");
+			dev_info(dev->dev,
+				 "audio-diag: SLIM capability exchange succeeded previous_state=%d\n",
+				 prev_state);
 			if (prev_state < MSM_CTRL_ASLEEP)
 				SLIM_WARN(dev,
 					"capability due to noise, state:%d\n",
@@ -1630,10 +1649,16 @@ capability_retry:
 				retries++;
 				goto capability_retry;
 			} else {
+				dev_info(dev->dev,
+					 "audio-diag: SLIM capability exchange exhausted retries ret=%d\n",
+					 ret);
 				release_wake_lock = true;
 			}
 		} else {
 			SLIM_WARN(dev, "SLIM: capability TX failed:%d\n", ret);
+			dev_info(dev->dev,
+				 "audio-diag: SLIM capability exchange failed ret=%d\n",
+				 ret);
 			release_wake_lock = true;
 		}
 
@@ -1668,16 +1693,26 @@ static int ngd_notify_slaves(void *data)
 		pm_relax(dev->dev);
 		return ret;
 	}
+	dev_info(dev->dev,
+		 "audio-diag: SLIM notifier ready; waiting for slave notification\n");
 	ngd_dom_init(dev);
 
 	while (!kthread_should_stop()) {
 		wait_for_completion_interruptible(&dev->qmi.slave_notify);
+		dev_info(dev->dev,
+			 "audio-diag: SLIM slave notification received initial=%u\n",
+			 !i);
 		/* Probe devices for first notification */
 		if (!i) {
 			i++;
 			dev->err = 0;
-			if (dev->dev->of_node)
+			if (dev->dev->of_node) {
+				dev_info(dev->dev,
+					 "audio-diag: registering SLIM DT children\n");
 				of_register_slim_devices(&dev->ctrl);
+				dev_info(dev->dev,
+					 "audio-diag: SLIM DT child registration returned\n");
+			}
 
 			/*
 			 * Add devices registered with board-info now that
@@ -1702,6 +1737,12 @@ static int ngd_notify_slaves(void *data)
 				/* time for ADSP to assign LA */
 				msleep(20);
 			}
+			dev_info(dev->dev,
+				 "audio-diag: SLIM child=%s ea=%02x:%02x:%02x:%02x:%02x:%02x laddr_ret=%d laddr=0x%02x\n",
+				 dev_name(&sbdev->dev), sbdev->e_addr[0],
+				 sbdev->e_addr[1], sbdev->e_addr[2],
+				 sbdev->e_addr[3], sbdev->e_addr[4],
+				 sbdev->e_addr[5], ret, sbdev->laddr);
 			mutex_lock(&ctrl->m_ctrl);
 		}
 		mutex_unlock(&ctrl->m_ctrl);
@@ -1733,12 +1774,19 @@ static void ngd_dom_up(struct work_struct *work)
 		container_of(work, struct msm_slim_ss, dom_up);
 	struct msm_slim_ctrl *dev =
 		container_of(dsp, struct msm_slim_ctrl, dsp);
+	int ret;
 
 	/* Make sure qmi service is up before continuing */
+	dev_info(dev->dev, "audio-diag: ADSP domain up; waiting for SLIMbus QMI\n");
 	wait_for_completion_interruptible(&dev->qmi_up);
+	dev_info(dev->dev, "audio-diag: SLIMbus QMI wait completed\n");
 
 	mutex_lock(&dev->ssr_lock);
-	if (ngd_slim_enable(dev, true)) {
+	ret = ngd_slim_enable(dev, true);
+	dev_info(dev->dev,
+		 "audio-diag: SLIMbus QMI initialization completed ret=%d\n",
+		 ret);
+	if (ret) {
 		atomic_set(&dev->init_in_progress, 0);
 		pm_relax(dev->dev);
 	}
@@ -2102,6 +2150,9 @@ static int ngd_slim_probe(struct platform_device *pdev)
 		goto err_notify_thread_create_failed;
 	}
 	SLIM_INFO(dev, "NGD SB controller is up!\n");
+	dev_info(dev->dev,
+		 "audio-diag: NGD controller registered nr=%d irq=%d bam_irq=%d\n",
+		 dev->ctrl.nr, dev->irq, dev->bam.irq);
 	return 0;
 
 err_notify_thread_create_failed:
