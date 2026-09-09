@@ -14,7 +14,7 @@ qcom,OP_3300mah {
 	qcom,max-voltage-uv = <4370000>;
 	qcom,fg-cc-cv-threshold-mv = <4360>;
 	qcom,fastchg-current-ma = <3000>;
-	qcom,batt-id-kohm = <200>;
+	qcom,batt-id-kohm = <99 200>;
 	qcom,battery-beta = <3450>;
 	qcom,battery-type = "OP_3300mah";
 	qcom,checksum = <0xE06B>;
