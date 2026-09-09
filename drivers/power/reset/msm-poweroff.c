@@ -163,16 +163,30 @@ static void qcom_edl_9008_park(void)
 
 void qcom_edl_9008_maybe_hijack(const char *cmd)
 {
+	bool explicit_edl = cmd && !strncmp(cmd, "edl", 3);
 	/*
-	 * Recognize exactly the target msm_restart_prepare() would turn into
-	 * an emergency download. Leave kernel-internal restarts, the panic
-	 * path, and every other reboot target alone.
+	 * The diag driver (drivers/char/diag/{diag_dci,diagfwd}.c) forces
+	 * download mode for host tools like QPST/QFIL without ever going
+	 * through a "reboot edl" cmd string: it calls the exported
+	 * msm_set_restart_mode(RESTART_DLOAD) then kernel_restart(NULL). That
+	 * lands here with cmd NULL, so the explicit_edl check above never
+	 * catches it and msm_restart_prepare() would go straight to
+	 * set_dload_mode(true) on a clean (non-panic) warm reset -- the same
+	 * shape that enumerates as plain 9008 rather than 900E.
 	 */
-	if (!msm_restart_ready || in_panic || !cmd || strncmp(cmd, "edl", 3))
+	bool diag_dload_restart = !cmd && restart_mode == RESTART_DLOAD;
+
+	/*
+	 * Recognize both the target msm_restart_prepare() would turn into an
+	 * emergency download and the diag-triggered clean DLOAD-mode restart
+	 * above. Leave kernel-internal restarts, the panic path, and every
+	 * other reboot target alone.
+	 */
+	if (!msm_restart_ready || in_panic || !(explicit_edl || diag_dload_restart))
 		return;
 
-	pr_emerg("qcom-edl-9008-hijack: claiming emergency-download target '%s', forcing 900E\n",
-		 cmd);
+	pr_emerg("qcom-edl-9008-hijack: claiming %s, forcing 900E\n",
+		 explicit_edl ? cmd : "diag DLOAD-mode restart (cmd=NULL)");
 
 	if (!qcom_edl_900e_arm())
 		panic("qcom-edl-9008-hijack: controlled 900E arm failed");
