@@ -4,6 +4,7 @@
  * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#include "kgsl_diag.h"
 #include <linux/sched/clock.h>
 #include <linux/slab.h>
 
@@ -1209,6 +1210,7 @@ int adreno_ringbuffer_submitcmd(struct adreno_device *adreno_dev,
 	}
 
 done:
+	kgsl_diag_submit(cmdobj, numibs, ret);
 	trace_kgsl_issueibcmds(device, context->id, numibs, drawobj->timestamp,
 			drawobj->flags, ret, drawctxt->type);
 
