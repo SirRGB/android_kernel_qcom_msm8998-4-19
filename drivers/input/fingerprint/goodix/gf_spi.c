@@ -762,10 +762,13 @@ static int gf_probe(struct platform_device *pdev)
 	gf_dev->irq_gpio = -EINVAL;
 	gf_dev->reset_gpio = -EINVAL;
 	gf_dev->pwr_gpio = -EINVAL;
+	gf_dev->enable_gpio = -EINVAL;
+	gf_dev->turn_on_gpio = -EINVAL;
 	gf_dev->device_available = 0;
 	gf_dev->fb_black = 0;
 
-	if (gf_parse_dts(gf_dev))
+	status = gf_parse_dts(gf_dev);
+	if (status)
 		goto error_hw;
 
 	/* If we can allocate a minor number, hook up this device.

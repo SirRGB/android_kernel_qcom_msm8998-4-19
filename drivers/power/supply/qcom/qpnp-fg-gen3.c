@@ -3666,6 +3666,20 @@ end_work:
 
 /* PSY CALLBACKS STAY HERE */
 
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+static int fg_get_external_charge(int (*get_charge)(void), int *charge_uah)
+{
+	int rc;
+
+	rc = get_charge();
+	if (rc < 0)
+		return rc;
+
+	*charge_uah = rc;
+	return 0;
+}
+#endif
+
 static int fg_psy_get_property(struct power_supply *psy,
 				       enum power_supply_property psp,
 				       union power_supply_propval *pval)
@@ -3764,7 +3778,19 @@ static int fg_psy_get_property(struct power_supply *psy,
 		rc = fg_get_sram_prop(fg, FG_SRAM_OCV, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
-		pval->intval = chip->cl.nom_cap_uah;
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+		if (chip->dt.use_external_fg) {
+			if (!get_extern_fg_regist_done() || !external_fg ||
+					!external_fg->get_batt_design_capacity) {
+				rc = -ENODATA;
+				break;
+			}
+			rc = fg_get_external_charge(
+				external_fg->get_batt_design_capacity,
+				&pval->intval);
+		} else
+#endif
+			pval->intval = chip->cl.nom_cap_uah;
 		break;
 	case POWER_SUPPLY_PROP_RESISTANCE_ID:
 		pval->intval = fg->batt_id_ohms;
@@ -3785,13 +3811,49 @@ static int fg_psy_get_property(struct power_supply *psy,
 		rc = fg_get_charge_raw(fg, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_NOW:
-		pval->intval = chip->cl.init_cc_uah;
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+		if (chip->dt.use_external_fg) {
+			if (!get_extern_fg_regist_done() || !external_fg ||
+					!external_fg->get_batt_charge_now) {
+				rc = -ENODATA;
+				break;
+			}
+			rc = fg_get_external_charge(
+				external_fg->get_batt_charge_now,
+				&pval->intval);
+		} else
+#endif
+			pval->intval = chip->cl.init_cc_uah;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
-		pval->intval = chip->cl.learned_cc_uah;
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+		if (chip->dt.use_external_fg) {
+			if (!get_extern_fg_regist_done() || !external_fg ||
+					!external_fg->get_batt_full_chg_capacity) {
+				rc = -ENODATA;
+				break;
+			}
+			rc = fg_get_external_charge(
+				external_fg->get_batt_full_chg_capacity,
+				&pval->intval);
+		} else
+#endif
+			pval->intval = chip->cl.learned_cc_uah;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
-		rc = fg_get_charge_counter(fg, &pval->intval);
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+		if (chip->dt.use_external_fg) {
+			if (!get_extern_fg_regist_done() || !external_fg ||
+					!external_fg->get_batt_remaining_capacity) {
+				rc = -ENODATA;
+				break;
+			}
+			rc = fg_get_external_charge(
+				external_fg->get_batt_remaining_capacity,
+				&pval->intval);
+		} else
+#endif
+			rc = fg_get_charge_counter(fg, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_COUNTER_SHADOW:
 		rc = fg_get_charge_counter_shadow(fg, &pval->intval);

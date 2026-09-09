@@ -214,6 +214,11 @@ static struct dsi_cmd_desc backlight_cmd = {
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 1, sizeof(led_pwm1)},
 	led_pwm1
 };
+static char led_pwm2[3] = {0x51, 0x00, 0x00};/* DTYPE_DCS_LWRITE */
+static struct dsi_cmd_desc backlight_cmd2 = {
+	{DTYPE_DCS_LWRITE, 1, 0, 0, 1, sizeof(led_pwm2)},
+	led_pwm2
+};
 
 static void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 {
@@ -228,10 +233,29 @@ static void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 
 	pr_debug("%s: level=%d\n", __func__, level);
 
-	led_pwm1[1] = (unsigned char)level;
+	if (ctrl->bklt_max > 255) {
+		u8 ldata;
+		u8 hdata;
+
+		if (ctrl->bl_high2bit) {
+			ldata = level & 0x0ff;
+			hdata = (level >> 8) & 0x03;
+		} else {
+			ldata = level & 0x03;
+			hdata = (level >> 2) & 0x0ff;
+		}
+
+		led_pwm2[2] = ldata;
+		led_pwm2[1] = hdata;
+	} else {
+		led_pwm1[1] = (unsigned char)level;
+	}
 
 	memset(&cmdreq, 0, sizeof(cmdreq));
-	cmdreq.cmds = &backlight_cmd;
+	if (ctrl->bklt_max > 255)
+		cmdreq.cmds = &backlight_cmd2;
+	else
+		cmdreq.cmds = &backlight_cmd;
 	cmdreq.cmds_cnt = 1;
 	cmdreq.flags = CMD_REQ_COMMIT | CMD_CLK_CTRL;
 	cmdreq.rlen = 0;
@@ -505,6 +529,77 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 	}
 
 exit:
+	return rc;
+}
+
+int mdss_dsi_disp_vci_en(struct mdss_panel_data *pdata, int enable)
+{
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
+	int rc = 0;
+
+	if (pdata == NULL) {
+		pr_err("%s: Invalid input data\n", __func__);
+		return -EINVAL;
+	}
+
+	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+				panel_data);
+
+	if (!gpio_is_valid(ctrl_pdata->disp_vci_en_gpio)) {
+		pr_debug("%s:%d, vci_en_gpio line not configured\n",
+			   __func__, __LINE__);
+		return rc;
+	}
+	pr_debug("%s: vci_en_gpio enable = %d\n", __func__, enable);
+
+	if (enable) {
+		rc = gpio_request(ctrl_pdata->disp_vci_en_gpio,
+					"disp_vci_en");
+		if (rc) {
+			pr_err("request vci_enable gpio failed, rc=%d\n",
+				       rc);
+			return rc;
+		}
+		rc = gpio_direction_output(ctrl_pdata->disp_vci_en_gpio, 1);
+	} else {
+		gpio_set_value(ctrl_pdata->disp_vci_en_gpio, 0);
+		gpio_free(ctrl_pdata->disp_vci_en_gpio);
+	}
+	return rc;
+}
+
+int mdss_dsi_disp_poc_en(struct mdss_panel_data *pdata, int enable)
+{
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
+	int rc = 0;
+
+	if (pdata == NULL) {
+		pr_err("%s: Invalid input data\n", __func__);
+		return -EINVAL;
+	}
+
+	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+			panel_data);
+
+	if (!gpio_is_valid(ctrl_pdata->disp_poc_en_gpio)) {
+		pr_debug("%s:%d, poc_en_gpio line not configured\n",
+			__func__, __LINE__);
+		return rc;
+	}
+	pr_debug("%s: poc_en_gpio enable = %d\n", __func__, enable);
+
+	if (enable) {
+		rc = gpio_request(ctrl_pdata->disp_poc_en_gpio,
+			"disp_poc_en");
+		if (rc) {
+			pr_err("request poc_enable gpio failed, rc=%d\n", rc);
+			return rc;
+		}
+		rc = gpio_direction_output(ctrl_pdata->disp_poc_en_gpio, 1);
+	} else {
+		gpio_set_value(ctrl_pdata->disp_poc_en_gpio, 0);
+		gpio_free(ctrl_pdata->disp_poc_en_gpio);
+	}
 	return rc;
 }
 
@@ -846,6 +941,25 @@ static void mdss_dsi_panel_switch_mode(struct mdss_panel_data *pdata,
 		mdss_dsi_panel_dsc_pps_send(ctrl_pdata, &pdata->panel_info);
 }
 
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+/*
+ * Backlight remapping:
+ * level 0 - 55 retain
+ * level 55 - 230 -> 55 - 200
+ * level 230 - 255 -> 200 - 255
+ */
+static inline u32 backlight_level_remap(u32 level)
+{
+	if (level <= 55)
+		return level;
+
+	if (level <= 230)
+		return (level * 29 + 330) / 35;
+
+	return level * 11 / 5 - 306;
+}
+#endif
+
 static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 							u32 bl_level)
 {
@@ -859,6 +973,13 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
+
+#ifdef CONFIG_MACH_ONEPLUS_MSM8998
+	if (ctrl_pdata->high_brightness_panel && ctrl_pdata->bklt_max == 255) {
+		pr_debug("%s goto backlight level remap\n", __func__);
+		bl_level = backlight_level_remap(bl_level);
+	}
+#endif
 
 	/*
 	 * Some backlight controllers specify a minimum duty cycle
@@ -2998,8 +3119,14 @@ static int mdss_panel_parse_dt(struct device_node *np,
 
 	mdss_dsi_set_refresh_rate_range(np, pinfo);
 
+	ctrl_pdata->high_brightness_panel = of_property_read_bool(np,
+			"qcom,mdss-dsi-high-brightness-panel");
+
 	pinfo->is_dba_panel = of_property_read_bool(np,
 			"qcom,dba-panel");
+
+	ctrl_pdata->bl_high2bit = of_property_read_bool(np,
+					"qcom,mdss-bl-high2bit");
 
 	if (pinfo->is_dba_panel) {
 		bridge_chip_name = of_get_property(np,

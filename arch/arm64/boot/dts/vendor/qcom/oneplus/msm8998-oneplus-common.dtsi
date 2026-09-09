@@ -692,6 +692,13 @@
 
 /* Audio */
 &snd_9335 {
+	pinctrl-names = "quat-mi2s-sleep", "quat-mi2s-active",
+			"quat-tdm-sleep", "quat-tdm-active";
+	pinctrl-0 = <>;
+	pinctrl-1 = <>;
+	pinctrl-2 = <>;
+	pinctrl-3 = <>;
+
 	qcom,mbhc-audio-jack-type = "4-pole-jack";
 };
 
@@ -2148,11 +2155,4 @@
 	pinctrl-names = "uart_active", "uart_deactive";
 	pinctrl-0 = <&uart_console_active>;
 	pinctrl-1 = <&uart_console_deactive>;
-};
-
-/* Restart */
-&soc {
-	restart@10ac000 {
-		qcom,force-warm-reboot;
-	};
 };
