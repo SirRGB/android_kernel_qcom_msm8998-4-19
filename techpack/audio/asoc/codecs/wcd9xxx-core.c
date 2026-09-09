@@ -1295,6 +1295,12 @@ static int wcd9xxx_slim_probe(struct slim_device *slim)
 	if (!slim)
 		return -EINVAL;
 
+	dev_info(&slim->dev,
+		 "audio-diag: WCD9xxx SLIM probe entered name=%s ea=%02x:%02x:%02x:%02x:%02x:%02x\n",
+		 slim->name, slim->e_addr[0], slim->e_addr[1],
+		 slim->e_addr[2], slim->e_addr[3], slim->e_addr[4],
+		 slim->e_addr[5]);
+
 	intf_type = wcd9xxx_get_intf_type();
 
 	wcd9xxx = devm_kzalloc(&slim->dev, sizeof(struct wcd9xxx),
@@ -1409,6 +1415,7 @@ static int wcd9xxx_slim_probe(struct slim_device *slim)
 			__func__);
 		goto err_codec;
 	}
+	dev_info(&slim->dev, "audio-diag: WCD9xxx static supplies enabled\n");
 
 	/*
 	 * For WCD9335, it takes about 600us for the Vout_A and
@@ -1425,6 +1432,7 @@ static int wcd9xxx_slim_probe(struct slim_device *slim)
 		dev_err(&slim->dev, "%s: Resetting Codec failed\n", __func__);
 		goto err_supplies;
 	}
+	dev_info(&slim->dev, "audio-diag: WCD9xxx reset completed\n");
 
 	ret = wcd9xxx_slim_get_laddr(wcd9xxx->slim, wcd9xxx->slim->e_addr,
 				     ARRAY_SIZE(wcd9xxx->slim->e_addr),
@@ -1437,6 +1445,9 @@ static int wcd9xxx_slim_probe(struct slim_device *slim)
 	wcd9xxx->read_dev = wcd9xxx_slim_read_device;
 	wcd9xxx->write_dev = wcd9xxx_slim_write_device;
 	wcd9xxx_pgd_la = wcd9xxx->slim->laddr;
+	dev_info(&slim->dev,
+		 "audio-diag: WCD9xxx PGD logical address=0x%02x\n",
+		 wcd9xxx_pgd_la);
 	wcd9xxx->slim_slave = &pdata->slimbus_slave_device;
 	if (!wcd9xxx->dev->of_node)
 		wcd9xxx_assign_irq(&wcd9xxx->core_res,
@@ -1459,6 +1470,9 @@ static int wcd9xxx_slim_probe(struct slim_device *slim)
 		goto err_slim_add;
 	}
 	wcd9xxx_inf_la = wcd9xxx->slim_slave->laddr;
+	dev_info(&slim->dev,
+		 "audio-diag: WCD9xxx interface logical address=0x%02x\n",
+		 wcd9xxx_inf_la);
 	wcd9xxx_set_intf_type(WCD9XXX_INTERFACE_TYPE_SLIMBUS);
 
 	ret = wcd9xxx_device_init(wcd9xxx);
@@ -1467,6 +1481,7 @@ static int wcd9xxx_slim_probe(struct slim_device *slim)
 			__func__, ret);
 		goto err_slim_add;
 	}
+	dev_info(&slim->dev, "audio-diag: WCD9xxx device initialization completed\n");
 #ifdef CONFIG_DEBUG_FS
 	debugCodec = wcd9xxx;
 
