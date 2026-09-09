@@ -2096,6 +2096,12 @@
 				hysteresis = <1000>;
 				type = "passive";
 			};
+
+			active-config1 {
+				temperature = <70000>;
+				hysteresis = <1000>;
+				type = "passive";
+			};
 		};
 	};
 };
