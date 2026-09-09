@@ -1020,7 +1020,7 @@ config PANIC_TIMEOUT
 
 config QCOM_EDL_900E_ENTRY
 	bool "Controlled QCOM EDL (900E) entry for init-loop recovery"
-	depends on ARCH_QCOM
+	depends on ARCH_QCOM && QCOM_DLOAD_MODE
 	help
 	  Register a one-shot softirq at softirq_init(), then arm it when the
 	  QCOM restart driver has installed the panic and emergency-download
