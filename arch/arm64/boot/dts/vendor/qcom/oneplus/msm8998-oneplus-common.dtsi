@@ -25,9 +25,6 @@
 #include "dsi-panel-samsung_s6e3fa5_1080p_cmd.dtsi"
 #include "dsi-panel-samsung_s6e3fa6_1080p_cmd.dtsi"
 
-/* Disable SMP2P Remote Debug for production */
-#include "msm-rdbg-disable.dtsi"
-
 / {
 	dsi_panel_pwr_supply_no_labibb: dsi_panel_pwr_supply_no_labibb {
 		#address-cells = <1>;
