@@ -1500,12 +1500,20 @@ clk_alpha_pll_postdiv_recalc_rate(struct clk_hw *hw, unsigned long parent_rate)
 	return parent_rate >> fls(ctl);
 }
 
-static const struct clk_div_table clk_alpha_div_table[] = {
+const struct clk_div_table clk_alpha_div_table[] = {
 	{ 0x0, 1 },
 	{ 0x1, 2 },
 	{ 0x3, 4 },
 	{ 0x7, 8 },
 	{ 0xf, 16 },
+	{ }
+};
+
+const struct clk_div_table clk_alpha_odd_div_table[] = {
+	{ 0x0, 1 },
+	{ 0x3, 3 },
+	{ 0x5, 5 },
+	{ 0x7, 7 },
 	{ }
 };
 
