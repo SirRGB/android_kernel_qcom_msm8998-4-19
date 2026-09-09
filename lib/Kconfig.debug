@@ -1060,6 +1060,32 @@ config QCOM_WARM_REBOOT_EDL_900E_ENTRY
 	  This deliberately crashes the kernel and is only for controlled
 	  bring-up recovery. If unsure, say N.
 
+config QCOM_EDL_9008_HIJACK_900E_ENTRY
+	bool "Hijack QCOM emergency download (9008) into controlled 900E entry"
+	depends on QCOM_EDL_900E_ENTRY && POWER_RESET_QCOM
+	help
+	  Replace the controlled EDL timer's probe-time trigger with an early
+	  intercept of an explicit emergency-download request, and never write
+	  the emergency-download cookie that selects Qualcomm USB PID 9008.
+
+	  The intercept runs at the start of kernel_restart(), before reboot
+	  notifiers and device shutdown, so the timer's workqueue and the QCOM
+	  panic and download-mode paths stay available. It recognizes exactly
+	  the "edl" target that the QCOM restart driver would otherwise turn
+	  into an emergency download, arms the timer, and then busy-polls that
+	  caller instead of returning into the restart path: a caller that
+	  keeps polling has been observed to prevent 9008 entry, and the armed
+	  timer must be the only way out. A bounded direct-panic backstop runs
+	  if the timer cannot fire.
+
+	  The driver additionally refuses to program the emergency-download
+	  cookie at all while this is enabled, so no later or unrelated caller
+	  can reselect 9008. Ordinary reboot targets, download mode on panic,
+	  and kernel-internal restarts are unchanged.
+
+	  This deliberately crashes the kernel and is only for controlled
+	  bring-up recovery. If unsure, say N.
+
 config SCHED_DEBUG
 	bool "Collect scheduler debugging info"
 	depends on DEBUG_KERNEL && PROC_FS
