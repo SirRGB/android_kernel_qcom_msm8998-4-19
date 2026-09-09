@@ -14639,6 +14639,8 @@ static int tasha_probe(struct platform_device *pdev)
 	struct wcd9xxx_resmgr_v2 *resmgr;
 	struct wcd9xxx_power_region *cdc_pwr;
 
+	dev_info(&pdev->dev, "audio-diag: WCD9335 platform probe entered\n");
+
 	if (wcd9xxx_get_intf_type() == WCD9XXX_INTERFACE_TYPE_I2C) {
 		if (apr_get_subsys_state() == APR_SUBSYS_DOWN) {
 			dev_err(&pdev->dev, "%s: dsp down\n", __func__);
@@ -14708,6 +14710,7 @@ static int tasha_probe(struct platform_device *pdev)
 		goto err_clk;
 	}
 	tasha->wcd_ext_clk = wcd_ext_clk;
+	dev_info(&pdev->dev, "audio-diag: WCD9335 external clock acquired\n");
 	tasha->sido_voltage = SIDO_VOLTAGE_NOMINAL_MV;
 	set_bit(AUDIO_NOMINAL, &tasha->status_mask);
 	tasha->sido_ccl_cnt = 0;
@@ -14720,6 +14723,9 @@ static int tasha_probe(struct platform_device *pdev)
 	else
 		tasha->wcd_native_clk = wcd_native_clk;
 
+	dev_info(&pdev->dev,
+		 "audio-diag: registering WCD9335 ASoC component interface=%d\n",
+		 wcd9xxx_get_intf_type());
 	if (wcd9xxx_get_intf_type() == WCD9XXX_INTERFACE_TYPE_SLIMBUS)
 		ret = snd_soc_register_component(&pdev->dev,
 					&soc_codec_dev_tasha,
@@ -14736,6 +14742,14 @@ static int tasha_probe(struct platform_device *pdev)
 			__func__, ret);
 		goto err_cdc_reg;
 	}
+	if (wcd9xxx_get_intf_type() == WCD9XXX_INTERFACE_TYPE_SLIMBUS)
+		dev_info(&pdev->dev,
+			 "audio-diag: WCD9335 ASoC component registered dais=%zu including=tasha_vifeedback\n",
+			 ARRAY_SIZE(tasha_dai));
+	else
+		dev_info(&pdev->dev,
+			 "audio-diag: WCD9335 I2S component registered dais=%zu\n",
+			 ARRAY_SIZE(tasha_i2s_dai));
 	/* Update codec register default values */
 	tasha_update_reg_defaults(tasha);
 	schedule_work(&tasha->tasha_add_child_devices_work);
