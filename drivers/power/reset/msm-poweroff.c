@@ -630,12 +630,15 @@ static void msm_restart_prepare(const char *cmd)
 	 * Kill download mode if master-kill switch is set
 	 */
 
-	set_dload_mode(download_mode &&
-			(in_panic || restart_mode == RESTART_DLOAD));
+	set_dload_mode((download_mode &&
+			(in_panic || restart_mode == RESTART_DLOAD)) ||
+			(IS_ENABLED(CONFIG_QCOM_PANIC_EDL_900E_ENTRY) &&
+			 in_panic));
 
 	/* Keep the dump path, but leave bootloader as the post-dump target. */
 	if (!cmd && in_panic && get_dload_mode() &&
-	    qcom_edl_900e_triggered())
+	    (IS_ENABLED(CONFIG_QCOM_PANIC_EDL_900E_ENTRY) ||
+	     qcom_edl_900e_triggered()))
 		cmd = "bootloader";
 #else
 	set_dload_mode(0);
