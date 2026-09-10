@@ -175,6 +175,8 @@ struct msm_pinctrl_info {
 
 struct msm_asoc_mach_data {
 	u32 mclk_freq;
+	bool oneplus_tfa98xx;
+	bool op_project_17801;
 	int us_euro_gpio; /* used by gpio driver API */
 	struct device_node *us_euro_gpio_p; /* used by pinctrl API */
 	struct device_node *hph_en1_gpio_p; /* used by pinctrl API */
@@ -2936,6 +2938,33 @@ static const struct snd_soc_dapm_widget msm_dapm_widgets[] = {
 	SND_SOC_DAPM_MIC("Digital Mic5", NULL),
 };
 
+static const struct snd_soc_dapm_widget msm_dapm_widgets_17801[] = {
+	SND_SOC_DAPM_SUPPLY("MCLK", SND_SOC_NOPM, 0, 0, msm_mclk_event,
+			    SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+	SND_SOC_DAPM_SUPPLY("MCLK TX", SND_SOC_NOPM, 0, 0,
+			    msm_mclk_tx_event,
+			    SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+	SND_SOC_DAPM_SPK("Lineout_1 amp", NULL),
+	SND_SOC_DAPM_SPK("Lineout_3 amp", NULL),
+	SND_SOC_DAPM_SPK("Lineout_2 amp", NULL),
+	SND_SOC_DAPM_SPK("Lineout_4 amp", NULL),
+	SND_SOC_DAPM_SPK("hifi amp", msm_hifi_ctrl_event),
+	SND_SOC_DAPM_MIC("Handset Mic", NULL),
+	SND_SOC_DAPM_MIC("Headset Mic", NULL),
+	SND_SOC_DAPM_MIC("ANCRight Headset Mic", NULL),
+	SND_SOC_DAPM_MIC("ANCLeft Headset Mic", NULL),
+	SND_SOC_DAPM_MIC("Analog Mic3", NULL),
+	SND_SOC_DAPM_MIC("Analog Mic4", NULL),
+	SND_SOC_DAPM_MIC("Analog Mic5", NULL),
+	SND_SOC_DAPM_MIC("Analog Mic6", NULL),
+	SND_SOC_DAPM_MIC("Digital Mic0", NULL),
+	SND_SOC_DAPM_MIC("Digital Mic1", NULL),
+	SND_SOC_DAPM_MIC("Digital Mic2", NULL),
+	SND_SOC_DAPM_MIC("Digital Mic3", NULL),
+	SND_SOC_DAPM_MIC("Digital Mic4", NULL),
+	SND_SOC_DAPM_MIC("Digital Mic5", NULL),
+};
+
 static inline int param_is_mask(int p)
 {
 	return (p >= SNDRV_PCM_HW_PARAM_FIRST_MASK) &&
@@ -3571,8 +3600,13 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 		return ret;
 	}
 
-	snd_soc_dapm_new_controls(dapm, msm_dapm_widgets,
-				ARRAY_SIZE(msm_dapm_widgets));
+	if (pdata->op_project_17801) {
+		snd_soc_dapm_new_controls(dapm, msm_dapm_widgets_17801,
+					  ARRAY_SIZE(msm_dapm_widgets_17801));
+	} else {
+		snd_soc_dapm_new_controls(dapm, msm_dapm_widgets,
+					  ARRAY_SIZE(msm_dapm_widgets));
+	}
 
 	if (!strcmp(dev_name(codec_dai->dev), "tasha_codec"))
 		snd_soc_dapm_add_routes(dapm, wcd_audio_paths_tasha,
@@ -3591,6 +3625,10 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dapm_ignore_suspend(dapm, "Digital Mic3");
 	snd_soc_dapm_ignore_suspend(dapm, "Digital Mic4");
 	snd_soc_dapm_ignore_suspend(dapm, "Digital Mic5");
+	if (pdata->op_project_17801) {
+		snd_soc_dapm_ignore_suspend(dapm, "Analog Mic3");
+		snd_soc_dapm_ignore_suspend(dapm, "Analog Mic4");
+	}
 	snd_soc_dapm_ignore_suspend(dapm, "Analog Mic5");
 	snd_soc_dapm_ignore_suspend(dapm, "Analog Mic6");
 	snd_soc_dapm_ignore_suspend(dapm, "MADINPUT");
@@ -6783,6 +6821,8 @@ static int msm_audrx_stub_init(struct snd_soc_pcm_runtime *rtd)
 	int ret = 0;
 	struct snd_soc_component *codec = rtd->codec_dai->component;
 	struct snd_soc_dapm_context *dapm = snd_soc_component_get_dapm(codec);
+	struct msm_asoc_mach_data *pdata =
+				snd_soc_card_get_drvdata(rtd->card);
 
 	ret = snd_soc_add_component_controls(codec, msm_snd_controls,
 					 ARRAY_SIZE(msm_snd_controls));
@@ -6792,8 +6832,13 @@ static int msm_audrx_stub_init(struct snd_soc_pcm_runtime *rtd)
 		return ret;
 	}
 
-	snd_soc_dapm_new_controls(dapm, msm_dapm_widgets,
-				ARRAY_SIZE(msm_dapm_widgets));
+	if (pdata->op_project_17801) {
+		snd_soc_dapm_new_controls(dapm, msm_dapm_widgets_17801,
+					  ARRAY_SIZE(msm_dapm_widgets_17801));
+	} else {
+		snd_soc_dapm_new_controls(dapm, msm_dapm_widgets,
+					  ARRAY_SIZE(msm_dapm_widgets));
+	}
 
 	return 0;
 }
@@ -7059,6 +7104,26 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 	}
 
 	return card;
+}
+
+static int msm_configure_tfa98xx(struct snd_soc_card *card)
+{
+	struct snd_soc_dai_link *link;
+	int i;
+
+	for (i = 0; i < card->num_links; i++) {
+		link = &card->dai_link[i];
+		if (link->id != MSM_BACKEND_DAI_QUATERNARY_MI2S_RX)
+			continue;
+
+		link->codec_name = "tfa98xx.9-0036";
+		link->codec_dai_name = "tfa98xx_codec-9-36";
+		link->codec_of_node = NULL;
+		return 0;
+	}
+
+	dev_err(card->dev, "quaternary MI2S playback link is missing\n");
+	return -EINVAL;
 }
 
 static int msm_wsa881x_init(struct snd_soc_component *component)
@@ -7367,6 +7432,7 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 {
 	struct snd_soc_card *card;
 	struct msm_asoc_mach_data *pdata;
+	struct device_node *np = pdev->dev.of_node;
 	const char *mbhc_audio_jack_type = NULL;
 	char *mclk_freq_prop_name;
 	const struct of_device_id *match;
@@ -7381,6 +7447,10 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 			sizeof(struct msm_asoc_mach_data), GFP_KERNEL);
 	if (!pdata)
 		return -ENOMEM;
+	pdata->oneplus_tfa98xx =
+		of_device_is_compatible(np, "oneplus,msm8998-asoc-snd-tasha");
+	pdata->op_project_17801 =
+		of_property_read_bool(np, "op,project_17801");
 
 	card = populate_snd_card_dailinks(&pdev->dev);
 	if (!card) {
@@ -7391,6 +7461,12 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 	card->dev = &pdev->dev;
 	platform_set_drvdata(pdev, card);
 	snd_soc_card_set_drvdata(card, pdata);
+	if (pdata->oneplus_tfa98xx) {
+		ret = msm_configure_tfa98xx(card);
+		if (ret)
+			goto err;
+		dev_info(&pdev->dev, "using OnePlus TFA98xx speaker path\n");
+	}
 
 	ret = snd_soc_of_parse_card_name(card, "qcom,model");
 	if (ret) {
@@ -7441,9 +7517,11 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 		ret = -EPROBE_DEFER;
 		goto err;
 	}
-	ret = msm_init_wsa_dev(pdev, card);
-	if (ret)
-		goto err;
+	if (!pdata->oneplus_tfa98xx) {
+		ret = msm_init_wsa_dev(pdev, card);
+		if (ret)
+			goto err;
+	}
 
 	ret = devm_snd_soc_register_card(&pdev->dev, card);
 	if (ret == -EPROBE_DEFER) {
