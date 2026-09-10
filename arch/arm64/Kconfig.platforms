@@ -286,6 +286,26 @@ config ARCH_MSM8998
 	  This enables support for the MSM8998 chipset. If you do not
 	  wish to build a kernel that runs on this chipset, say 'N' here.
 
+config ARCH_ONEPLUS_MSM8998
+	bool
+	depends on ARCH_MSM8998
+
+config ARCH_ONEPLUS_CHEESEBURGER
+	bool "OnePlus 5 platform"
+	depends on ARCH_MSM8998
+	select ARCH_ONEPLUS_MSM8998
+	help
+	  Support for the OnePlus 5 Cheeseburger platform, which is based
+	  on the Qualcomm MSM8998 chipset.
+
+config ARCH_ONEPLUS_DUMPLING
+	bool "OnePlus 5T platform"
+	depends on ARCH_MSM8998
+	select ARCH_ONEPLUS_MSM8998
+	help
+	  Support for the OnePlus 5T Dumpling platform, which is based on
+	  the Qualcomm MSM8998 chipset.
+
 config ARCH_SDM450
 	bool "Enable Support for Qualcomm Technologies Inc. SDM450"
 	depends on ARCH_QCOM
