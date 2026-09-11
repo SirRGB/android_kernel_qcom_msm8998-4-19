@@ -1290,7 +1290,7 @@ static int smb2_batt_get_prop(struct power_supply *psy,
 		break;
 #ifdef CONFIG_MACH_ONEPLUS_MSM8998
 	case POWER_SUPPLY_PROP_CHARGE_NOW:
-		rc = smblib_get_prop_usb_voltage_now(chg, val);
+		rc = smblib_get_prop_from_bms(chg, psp, val);
 		break;
 	case POWER_SUPPLY_PROP_CHG_PROTECT_STATUS:
 		val->intval = get_prop_chg_protect_status(chg);
