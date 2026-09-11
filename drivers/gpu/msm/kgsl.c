@@ -24,6 +24,7 @@
 #include "kgsl_compat.h"
 #include "kgsl_debugfs.h"
 #include "kgsl_device.h"
+#include "kgsl_diag.h"
 #include "kgsl_mmu.h"
 #include "kgsl_reclaim.h"
 #include "kgsl_sync.h"
@@ -364,6 +365,8 @@ static void mem_entry_destroy(struct kgsl_mem_entry *entry)
 	if (!(entry->memdesc.flags & KGSL_MEMFLAGS_SPARSE_VIRT))
 		kgsl_process_sub_stats(entry->priv, memtype,
 			entry->memdesc.size);
+
+	kgsl_diag_destroy(entry);
 
 	/* Detach from process list */
 	kgsl_mem_entry_detach_process(entry);
@@ -2994,6 +2997,7 @@ long kgsl_ioctl_gpuobj_import(struct kgsl_device_private *dev_priv,
 		entry->memdesc.size);
 
 	trace_kgsl_mem_map(entry, fd);
+	kgsl_diag_mem(entry, 1, fd, 0, 0);
 
 	kgsl_mem_entry_commit_process(entry);
 
@@ -3146,6 +3150,10 @@ static int kgsl_setup_dma_buf(struct kgsl_device *device,
 	}
 
 	add_dmabuf_list(meta);
+
+#ifdef CONFIG_KGSL_OP5_DIAG
+	entry->op5_diag_sg_size = entry->memdesc.size;
+#endif
 	entry->memdesc.size = PAGE_ALIGN(entry->memdesc.size);
 
 out:
@@ -3304,6 +3312,7 @@ long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 			kgsl_memdesc_usermem_type(&entry->memdesc), param->len);
 
 	trace_kgsl_mem_map(entry, param->fd);
+	kgsl_diag_mem(entry, 1, param->fd, param->offset, param->len);
 
 	kgsl_mem_entry_commit_process(entry);
 
@@ -3694,6 +3703,7 @@ struct kgsl_mem_entry *gpumem_alloc_entry(
 			kgsl_memdesc_usermem_type(&entry->memdesc),
 			entry->memdesc.size);
 	trace_kgsl_mem_alloc(entry);
+	kgsl_diag_mem(entry, 0, -1, 0, size);
 
 	kgsl_mem_entry_commit_process(entry);
 	return entry;
@@ -5491,6 +5501,7 @@ _flush_mem_workqueue(struct work_struct *work)
 
 static void kgsl_core_exit(void)
 {
+	kgsl_diag_exit();
 	if (kgsl_driver.workqueue) {
 		destroy_workqueue(kgsl_driver.workqueue);
 		kgsl_driver.workqueue = NULL;
@@ -5636,6 +5647,8 @@ static int __init kgsl_core_init(void)
 
 	memfree.list = kcalloc(MEMFREE_ENTRIES, sizeof(struct memfree_entry),
 		GFP_KERNEL);
+
+	kgsl_diag_init();
 
 	return 0;
 
