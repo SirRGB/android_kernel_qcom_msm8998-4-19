@@ -30,3 +30,12 @@ config QCOM_KGSL_IOMMU
 config CORESIGHT_ADRENO
 	bool
 	default y if QCOM_KGSL=y && CORESIGHT=y
+
+config KGSL_OP5_DIAG
+	bool "Temporary OP5 V12 bounded KGSL metadata diagnostics"
+	depends on QCOM_KGSL=y
+	default n
+	help
+	  Log bounded SurfaceFlinger memory lifetime, submission metadata and
+	  first fault counters. Does not read command contents or alter GPU
+	  behavior. Diagnostic output includes GPU virtual addresses.
