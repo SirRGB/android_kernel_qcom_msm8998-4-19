@@ -2458,16 +2458,26 @@ static int tfa98xx_load_container(struct tfa98xx *tfa98xx)
 {
 	enum tfa_error tfa_err;
 	int handle;
+	int probe_ret;
 	int container_size;
 	const struct firmware *fw;
 	int ret;
 	tfa98xx->dsp_fw_state = TFA98XX_DSP_FW_FAIL;
 
 	
+	if (IS_ENABLED(CONFIG_SND_SOC_TFA98XX_DIAGNOSTICS))
+		dev_info(tfa98xx->dev,
+			 "tfa-playback: request firmware %s\n", fw_name);
+
     ret = request_firmware(&fw,fw_name,tfa98xx->dev);
 	if(ret < 0)
 	{
-		pr_err("Failed to read %s\n", fw_name);
+		if (IS_ENABLED(CONFIG_SND_SOC_TFA98XX_DIAGNOSTICS))
+			dev_err(tfa98xx->dev,
+				"tfa-playback: firmware %s request failed: %d\n",
+				fw_name, ret);
+		else
+			pr_err("Failed to read %s\n", fw_name);
 		return ret;
 	}
 	
@@ -2493,6 +2503,9 @@ static int tfa98xx_load_container(struct tfa98xx *tfa98xx)
 
 	tfa_err = tfa_load_cnt(container, container_size);
 	if (tfa_err != tfa_error_ok) {
+		if (IS_ENABLED(CONFIG_SND_SOC_TFA98XX_DIAGNOSTICS))
+			dev_err(tfa98xx->dev,
+				"tfa-playback: fw parse fail rc=%d\n", tfa_err);
 		dev_err(tfa98xx->dev, "Cannot load container file, aborting\n");
 		return tfa_err;
 	}
@@ -2500,11 +2513,20 @@ static int tfa98xx_load_container(struct tfa98xx *tfa98xx)
 	/* register codec with dsp */
 	tfa98xx->handle = tfa98xx_register_dsp(tfa98xx);
 	if (tfa98xx->handle < 0) {
+		if (IS_ENABLED(CONFIG_SND_SOC_TFA98XX_DIAGNOSTICS))
+			dev_err(tfa98xx->dev,
+				"tfa-playback: DSP register fail rc=%d\n",
+				tfa98xx->handle);
 		dev_err(tfa98xx->dev, "Cannot register with DSP, aborting\n");
 		return tfa98xx->handle;
 	}
 
-	if (tfa_probe(tfa98xx->i2c->addr << 1, &handle) != Tfa98xx_Error_Ok) {
+	probe_ret = tfa_probe(tfa98xx->i2c->addr << 1, &handle);
+	if (probe_ret) {
+		if (IS_ENABLED(CONFIG_SND_SOC_TFA98XX_DIAGNOSTICS))
+			dev_err(tfa98xx->dev,
+				"tfa-playback: probe fail rc=%d addr=%#x\n",
+				probe_ret, tfa98xx->i2c->addr);
 		dev_err(tfa98xx->dev, "Failed to probe TFA98xx @ 0x%.2x\n", tfa98xx->i2c->addr);
 		return tfa98xx->i2c->addr;
 	}
@@ -2534,6 +2556,11 @@ static int tfa98xx_load_container(struct tfa98xx *tfa98xx)
 
 	tfa98xx->dsp_fw_state = TFA98XX_DSP_FW_OK;
 	pr_err("Firmware init complete\n");
+	if (IS_ENABLED(CONFIG_SND_SOC_TFA98XX_DIAGNOSTICS))
+		dev_info(tfa98xx->dev,
+			 "tfa-playback: fw ok s=%d h=%d ph=%d n=%d\n",
+			 tfa98xx->dsp_fw_state, tfa98xx->handle, handle,
+			 container_size);
 
 	if (no_start != 0)
 		return no_start;
@@ -2655,14 +2682,29 @@ static void tfa98xx_dsp_init(struct tfa98xx *tfa98xx)
 			/* It may fail as we may not have a valid clock at that
 			 * time, so re-schedule and re-try later.
 			 */
-			dev_err(&tfa98xx->i2c->dev,
+			if (IS_ENABLED(CONFIG_SND_SOC_TFA98XX_DIAGNOSTICS))
+				dev_err_ratelimited(&tfa98xx->i2c->dev,
+						    "tfa-playback: start fail rc=%d n=%d f=%d d=%d\n",
+						    ret, tfa98xx->init_count,
+						    tfa98xx->dsp_fw_state,
+						    tfa98xx->dsp_init);
+			else
+				dev_err(&tfa98xx->i2c->dev,
 					"tfa_start failed! (err %d) - %d\n",
 					ret, tfa98xx->init_count);
 			reschedule = true;
 		} else {
 			/* Subsystem ready, tfa init complete */
-			pr_debug("tfa_start success (%d)\n",
-						tfa98xx->init_count);
+			if (IS_ENABLED(CONFIG_SND_SOC_TFA98XX_DIAGNOSTICS))
+				dev_info(&tfa98xx->i2c->dev,
+					 "tfa-playback: start ok n=%d f=%d d=%d h=%d r=%u p=%d\n",
+					 tfa98xx->init_count,
+					 tfa98xx->dsp_fw_state,
+					 tfa98xx->dsp_init, tfa98xx->handle,
+					 tfa98xx->rate, tfa98xx_profile);
+			else
+				pr_debug("tfa_start success (%d)\n",
+					 tfa98xx->init_count);
 			/* cancel other pending init works */
 			cancel_delayed_work(&tfa98xx->init_work);
 			tfa98xx->init_count = 0;
@@ -2936,8 +2978,16 @@ static int tfa98xx_mute(struct snd_soc_dai *dai, int mute, int stream)
 {
 	struct snd_soc_component *codec = dai->component;
 	struct tfa98xx *tfa98xx = snd_soc_component_get_drvdata(codec);
+	int bob_ret;
+	int pins_ret;
 
 	dev_dbg(&tfa98xx->i2c->dev, "state: %d\n", mute);
+	if (IS_ENABLED(CONFIG_SND_SOC_TFA98XX_DIAGNOSTICS))
+		dev_info(&tfa98xx->i2c->dev,
+			 "tfa-playback: mute=%d str=%d fl=%#x ns=%d f=%d d=%d h=%d p=%d c=%d\n",
+			 mute, stream, tfa98xx->flags, no_start,
+			 tfa98xx->dsp_fw_state, tfa98xx->dsp_init,
+			 tfa98xx->handle, tfa98xx->pstream, tfa98xx->cstream);
 
 	if (!(tfa98xx->flags & TFA98XX_FLAG_DSP_START_ON_MUTE))
 		return 0;
@@ -2948,9 +2998,13 @@ static int tfa98xx_mute(struct snd_soc_dai *dai, int mute, int stream)
 	}
 
 	if (mute) {
-		regulator_set_mode(bob_power, REGULATOR_MODE_STANDBY);
-		pinctrl_select_state(tfa98xx->pinctrl, 
-				tfa98xx->pinctrl_sleep_state);
+		bob_ret = regulator_set_mode(bob_power, REGULATOR_MODE_STANDBY);
+		pins_ret = pinctrl_select_state(tfa98xx->pinctrl,
+						tfa98xx->pinctrl_sleep_state);
+		if (IS_ENABLED(CONFIG_SND_SOC_TFA98XX_DIAGNOSTICS))
+			dev_info(&tfa98xx->i2c->dev,
+				 "tfa-playback: power m=1 bob=standby rc=%d pins=sleep rc=%d\n",
+				 bob_ret, pins_ret);
 		/* stop DSP only when both playback and capture streams
 		 * are deactivated
 		 */
@@ -2968,9 +3022,13 @@ static int tfa98xx_mute(struct snd_soc_dai *dai, int mute, int stream)
 		tfa98xx->dsp_init = TFA98XX_DSP_INIT_STOPPED;
 		mutex_unlock(&tfa98xx->dsp_lock);
 	} else {
-		regulator_set_mode(bob_power, REGULATOR_MODE_FAST);
-		pinctrl_select_state(tfa98xx->pinctrl, 
-				tfa98xx->pinctrl_default_state);
+		bob_ret = regulator_set_mode(bob_power, REGULATOR_MODE_FAST);
+		pins_ret = pinctrl_select_state(tfa98xx->pinctrl,
+						tfa98xx->pinctrl_default_state);
+		if (IS_ENABLED(CONFIG_SND_SOC_TFA98XX_DIAGNOSTICS))
+			dev_info(&tfa98xx->i2c->dev,
+				 "tfa-playback: power m=0 bob=fast rc=%d pins=default rc=%d\n",
+				 bob_ret, pins_ret);
 		if (stream == SNDRV_PCM_STREAM_PLAYBACK)
 			tfa98xx->pstream = 1;
 		else
