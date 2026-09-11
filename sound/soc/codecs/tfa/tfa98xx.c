@@ -2947,6 +2947,12 @@ static int tfa98xx_hw_params(struct snd_pcm_substream *substream,
 	pr_debug("Requested rate: %d, sample size: %d, physical size: %d\n",
 			rate, snd_pcm_format_width(params_format(params)),
 			snd_pcm_format_physical_width(params_format(params)));
+#if IS_ENABLED(CONFIG_SND_SOC_TFA98XX_DIAGNOSTICS)
+	dev_info(&tfa98xx->i2c->dev,
+		 "tfa-playback: hw_params rate=%u ch=%u width=%u ns=%d\n",
+		 rate, params_channels(params),
+		 snd_pcm_format_width(params_format(params)), no_start);
+#endif
 
 	if (params_channels(params) > 2) {
 		pr_warn("Unusual number of channels: %d\n", params_channels(params));
