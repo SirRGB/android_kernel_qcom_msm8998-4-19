@@ -1086,6 +1086,28 @@ config QCOM_EDL_9008_HIJACK_900E_ENTRY
 	  This deliberately crashes the kernel and is only for controlled
 	  bring-up recovery. If unsure, say N.
 
+config QCOM_PANIC_EDL_900E_ENTRY
+	bool "Route QCOM kernel panics through EDL (900E)"
+	depends on ARCH_QCOM && QCOM_DLOAD_MODE && POWER_RESET_QCOM
+	depends on QCOM_WATCHDOG_V2
+	select QCOM_FORCE_WDOG_BITE_ON_PANIC
+	help
+	  Force the QCOM restart path to retain download mode for every kernel
+	  panic, even if the runtime download_mode parameter was disabled, and
+	  select bootloader as the post-dump restart target. On MSM8998 firmware
+	  this is intended to expose the panic dump endpoint as Qualcomm USB PID
+	  900E while preserving the normal panic and dump collection path.
+
+	  A real kernel panic is the only trigger. This option does not arm the
+	  controlled EDL timer or create a synthetic fault. After the dump cookie
+	  and restart target are prepared, the QCOM watchdog path programs a
+	  hardware bite and busy-waits for that reset instead of falling through
+	  to the ordinary PS_HOLD restart path.
+
+	  This changes the terminal behavior of every kernel panic and is only
+	  suitable for dedicated forensic builds. Hardware and bootloader support
+	  must be validated on the target device. If unsure, say N.
+
 config SCHED_DEBUG
 	bool "Collect scheduler debugging info"
 	depends on DEBUG_KERNEL && PROC_FS
