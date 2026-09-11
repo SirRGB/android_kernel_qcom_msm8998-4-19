@@ -15,6 +15,7 @@
 
 #include "adreno.h"
 #include "kgsl_device.h"
+#include "kgsl_diag.h"
 #include "kgsl_iommu.h"
 #include "kgsl_mmu.h"
 #include "kgsl_pwrctrl.h"
@@ -818,6 +819,8 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 	 * address in free list as it takes quite long time in
 	 * search and delays the trace unnecessarily.
 	 */
+	kgsl_diag_fault(private, addr, flags, contextidr, ptbase);
+
 	trace_kgsl_mmu_pagefault(ctx->kgsldev, addr,
 			ptname, comm, write ? "write" : "read");
 
