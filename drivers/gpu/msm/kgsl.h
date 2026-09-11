@@ -283,6 +283,10 @@ struct kgsl_memdesc {
  * @bind_tree: RB Tree for sparse memory bindings
  */
 struct kgsl_mem_entry {
+#ifdef CONFIG_KGSL_OP5_DIAG
+	u64 op5_diag_cookie;
+	u64 op5_diag_sg_size;
+#endif
 	struct kref refcount;
 	struct kgsl_memdesc memdesc;
 	void *priv_data;
