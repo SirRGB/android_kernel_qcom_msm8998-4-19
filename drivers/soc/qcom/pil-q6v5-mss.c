@@ -47,22 +47,45 @@ static void log_modem_sfr(struct modem_data *drv)
 	size_t size;
 	char *smem_reason, reason[MAX_SSR_REASON_LEN];
 
-	if (drv->q6->smem_id == -1)
+	if (drv->q6->smem_id == -1) {
+#if IS_ENABLED(CONFIG_QCOM_MODEM_SFR_DIAGNOSTICS)
+		pr_err("modem SFR: reason SMEM is unavailable (id=-1).\n");
+#endif
 		return;
+	}
 
 	smem_reason = qcom_smem_get(QCOM_SMEM_HOST_ANY, drv->q6->smem_id,
 								&size);
 	if (IS_ERR(smem_reason) || !size) {
+#if IS_ENABLED(CONFIG_QCOM_MODEM_SFR_DIAGNOSTICS)
+		if (IS_ERR(smem_reason))
+			pr_err("modem SFR: reason SMEM id=%d lookup failed err=%ld.\n",
+			       drv->q6->smem_id, PTR_ERR(smem_reason));
+		else
+			pr_err("modem SFR: reason SMEM id=%d has zero size.\n",
+			       drv->q6->smem_id);
+#else
 		pr_err("modem SFR: (unknown, qcom_smem_get failed).\n");
+#endif
 		return;
 	}
 	if (!smem_reason[0]) {
+#if IS_ENABLED(CONFIG_QCOM_MODEM_SFR_DIAGNOSTICS)
+		pr_err("modem SFR: reason SMEM id=%d is empty (size=%zu).\n",
+		       drv->q6->smem_id, size);
+#else
 		pr_err("modem SFR: (unknown, empty string found).\n");
+#endif
 		return;
 	}
 
 	strlcpy(reason, smem_reason, min(size, (size_t)MAX_SSR_REASON_LEN));
+#if IS_ENABLED(CONFIG_QCOM_MODEM_SFR_DIAGNOSTICS)
+	pr_err("modem SFR: reason SMEM id=%d size=%zu: %s.\n",
+	       drv->q6->smem_id, size, reason);
+#else
 	pr_err("modem subsystem failure reason: %s.\n", reason);
+#endif
 }
 
 static void restart_modem(struct modem_data *drv)
