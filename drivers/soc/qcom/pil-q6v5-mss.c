@@ -105,6 +105,10 @@ static irqreturn_t modem_err_fatal_intr_handler(int irq, void *dev_id)
 
 	pr_err("Fatal error on the modem.\n");
 	subsys_set_crash_status(drv->subsys, CRASH_STATUS_ERR_FATAL);
+#if IS_ENABLED(CONFIG_QCOM_MODEM_SFR_DIAGNOSTICS)
+	pr_err("modem SFR: cause=ERR_FATAL irq=%d smem_id=%d.\n", irq,
+	       drv->q6->smem_id);
+#endif
 	restart_modem(drv);
 	return IRQ_HANDLED;
 }
@@ -247,6 +251,10 @@ static irqreturn_t modem_wdog_bite_intr_handler(int irq, void *dev_id)
 		panic("%s: System ramdump requested. Triggering device restart!\n",
 							__func__);
 	subsys_set_crash_status(drv->subsys, CRASH_STATUS_WDOG_BITE);
+#if IS_ENABLED(CONFIG_QCOM_MODEM_SFR_DIAGNOSTICS)
+	pr_err("modem SFR: cause=WDOG_BITE irq=%d smem_id=%d.\n", irq,
+	       drv->q6->smem_id);
+#endif
 	restart_modem(drv);
 	return IRQ_HANDLED;
 }
