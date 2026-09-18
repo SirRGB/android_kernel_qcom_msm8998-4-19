@@ -149,6 +149,7 @@ struct msm8998_qmp_snapshot {
 	u32 start;
 	u32 typec;
 	u32 tcsr_mode;
+	u32 vls_clamp;
 	u32 clocks_enabled;
 };
 
@@ -276,6 +277,8 @@ static void msm8998_qmp_snapshot(struct msm_ssphy_qmp *phy,
 			phy->phy_reg[USB3_PHY_PCS_MISC_TYPEC_CTRL]);
 	snapshot.tcsr_mode = phy->tcsr_usb3_dp_phymode ?
 		readl_relaxed(phy->tcsr_usb3_dp_phymode) : U32_MAX;
+	snapshot.vls_clamp = phy->vls_clamp_reg ?
+		readl_relaxed(phy->vls_clamp_reg) : U32_MAX;
 	snapshot.clocks_enabled = msm8998_qmp_clock_enabled(phy->ref_clk_src) |
 		(msm8998_qmp_clock_enabled(phy->ref_clk) << 1) |
 		(msm8998_qmp_clock_enabled(phy->aux_clk) << 2) |
@@ -293,12 +296,12 @@ static void msm8998_qmp_snapshot(struct msm_ssphy_qmp *phy,
 		 snapshot.lock_cmp_en, snapshot.lock_cmp_cfg,
 		 snapshot.clk_select);
 	dev_info(phy->phy.dev,
-		 "QMP %u %s inputs: en1=%08x buf=%08x ensel=%08x rsm2=%08x cfg=%08x svs=%08x clks=%02x tcsr=%08x\n",
+		 "QMP %u %s inputs: en1=%08x buf=%08x ensel=%08x rsm2=%08x cfg=%08x svs=%08x clks=%02x tcsr=%08x vls=%08x\n",
 		 attempt, stage, snapshot.clk_enable1,
 		 snapshot.sysclk_buf_enable, snapshot.sysclk_en_sel,
 		 snapshot.resetsm_ctrl2, snapshot.cmn_config,
 		 snapshot.svs_mode_clk_sel, snapshot.clocks_enabled,
-		 snapshot.tcsr_mode);
+		 snapshot.tcsr_mode, snapshot.vls_clamp);
 	dev_info(phy->phy.dev,
 		 "QMP %u %s ctl: pwr=%08x rst=%08x start=%08x typec=%08x\n",
 		 attempt, stage, snapshot.power, snapshot.sw_reset,
