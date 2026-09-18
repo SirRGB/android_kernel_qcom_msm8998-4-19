@@ -1072,6 +1072,20 @@ static void msm_ssphy_qmp_enable_clks(struct msm_ssphy_qmp *phy, bool on)
 		if (phy->ref_clk)
 			ref_ret = clk_prepare_enable(phy->ref_clk);
 
+		/*
+		 * Request the native rate on the SS-PHY reference source so
+		 * the QMP PLL reference is driven at its design rate, the
+		 * same way aux_clk is handled below.  Without any rate
+		 * request the framework reports only the XO-buffer default
+		 * floor (1000 Hz in captures) for RPM_SMD_LN_BB_CLK1, which
+		 * is the suspected cause of SYSCLK_DET never asserting.
+		 * Rate bookkeeping only; revertible in isolation.
+		 */
+		if (phy->ref_clk_src)
+			clk_set_rate(phy->ref_clk_src,
+				     clk_round_rate(phy->ref_clk_src,
+						    ULONG_MAX));
+
 		if (phy->com_aux_clk)
 			com_aux_ret = clk_prepare_enable(phy->com_aux_clk);
 
