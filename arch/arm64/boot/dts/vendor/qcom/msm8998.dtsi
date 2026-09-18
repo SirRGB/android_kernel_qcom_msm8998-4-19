@@ -1971,6 +1971,11 @@
 			usb-core-id = <0>;
 			maximum-speed = "super-speed";
 			dr_mode = "otg";
+			clocks = <&clock_rpmcc CXO_SMD_DWC3_CLK>,
+				<&clock_gcc GCC_USB30_MASTER_CLK>,
+				<&clock_gcc GCC_USB30_SLEEP_CLK>;
+
+			clock-names = "ref", "bus_early", "suspend";
 		};
 
 		qcom,usbbam@a904000 {
