@@ -21,6 +21,7 @@
 #include <linux/platform_device.h>
 #include <linux/usb/audio-v3.h>
 #include <linux/ipc_logging.h>
+#include <linux/sched/debug.h>
 
 #include "usbaudio.h"
 #include "card.h"
@@ -326,13 +327,13 @@ static unsigned long uaudio_iommu_map(enum mem_type mtype, phys_addr_t pa,
 			IOMMU_READ | IOMMU_WRITE | IOMMU_MMIO);
 		if (ret) {
 			uaudio_err("mapping failed ret%d\n", ret);
-			uaudio_err("memtype:%d, pa:%pK iova:%lu sg_len:%zu\n",
+			uaudio_err("memtype:%d, pa:%pa iova:%lu sg_len:%zu\n",
 				mtype, &pa_sg, va_sg, sg_len);
 			uaudio_iommu_unmap(MEM_XFER_BUF, va, size, total_len);
 			va = 0;
 			goto done;
 		}
-		uaudio_dbg("memtype %d:map pa:%pK to iova:%lu len:%zu\n", mtype,
+		uaudio_dbg("memtype %d:map pa:%pa to iova:%lu len:%zu\n", mtype,
 				&pa_sg, va_sg, sg_len);
 		va_sg += sg_len;
 		total_len += sg_len;
@@ -347,13 +348,13 @@ static unsigned long uaudio_iommu_map(enum mem_type mtype, phys_addr_t pa,
 	return va;
 
 skip_sgt_map:
-	uaudio_dbg("memtype:%d map pa:%pK to iova %lu size:%zu\n", mtype, &pa,
+	uaudio_dbg("memtype:%d map pa:%pa to iova %lu size:%zu\n", mtype, &pa,
 			va, size);
 
 	ret = iommu_map(uaudio_qdev->domain, va, pa, size,
 		IOMMU_READ | IOMMU_WRITE | IOMMU_MMIO);
 	if (ret)
-		uaudio_err("failed to map pa:%pK iova:%lu memtype:%d ret:%d\n",
+		uaudio_err("failed to map pa:%pa iova:%lu memtype:%d ret:%d\n",
 				&pa, va, mtype, ret);
 done:
 	return va;
@@ -430,6 +431,18 @@ static void uaudio_iommu_unmap(enum mem_type mtype, unsigned long va,
 
 	if (!unmap || !mapped_iova_size)
 		return;
+
+	/*
+	 * Diagnostic trace: the 2026-09-21 900E capture showed the Q6
+	 * context-faulting on the event-ring IOVA after the mapping was
+	 * already torn down. Log the caller of every event-ring unmap so the
+	 * racing teardown path is identifiable from a recovered printk ring.
+	 */
+	if (mtype == MEM_EVENT_RING) {
+		uaudio_err("event ring unmap iova %lu size %zu\n", va,
+				mapped_iova_size);
+		dump_stack();
+	}
 
 	uaudio_dbg("memtype %d: unmap iova %lu size %zu\n", mtype, va,
 			mapped_iova_size);
@@ -835,9 +848,26 @@ static void uaudio_dev_intf_cleanup(struct usb_device *udev,
 	info->in_use = false;
 }
 
+static void uaudio_event_ring_cleanup_free(struct uaudio_dev *dev)
+{
+	clear_bit(dev->card_num, &uaudio_qdev->card_slot);
+	/* all audio devices are disconnected */
+	if (!uaudio_qdev->card_slot) {
+		uaudio_iommu_unmap(MEM_EVENT_RING, IOVA_BASE, PAGE_SIZE,
+			PAGE_SIZE);
+		usb_sec_event_ring_cleanup(dev->udev, uaudio_qdev->intr_num);
+		uaudio_dbg("all audio devices disconnected\n");
+	}
+}
+
 static void uaudio_dev_cleanup(struct uaudio_dev *dev)
 {
 	int if_idx;
+
+	if (!dev->udev) {
+		uaudio_dbg("USB audio device memory is already freed.\n");
+		return;
+	}
 
 	/* free xfer buffer and unmap xfer ring and buf per interface */
 	for (if_idx = 0; if_idx < dev->num_intf; if_idx++) {
@@ -858,17 +888,7 @@ static void uaudio_dev_cleanup(struct uaudio_dev *dev)
 	/* free interface info */
 	kfree(dev->info);
 	dev->info = NULL;
-
-	clear_bit(dev->card_num, &uaudio_qdev->card_slot);
-
-	/* all audio devices are disconnected */
-	if (!uaudio_qdev->card_slot) {
-		uaudio_iommu_unmap(MEM_EVENT_RING, IOVA_BASE, PAGE_SIZE,
-			PAGE_SIZE);
-		usb_sec_event_ring_cleanup(dev->udev, uaudio_qdev->intr_num);
-		uaudio_dbg("all audio devices disconnected\n");
-	}
-
+	uaudio_event_ring_cleanup_free(dev);
 	dev->udev = NULL;
 }
 
@@ -940,17 +960,7 @@ static void uaudio_dev_release(struct kref *kref)
 	uaudio_dbg("for dev %pK\n", dev);
 
 	atomic_set(&dev->in_use, 0);
-
-	clear_bit(dev->card_num, &uaudio_qdev->card_slot);
-
-	/* all audio devices are disconnected */
-	if (!uaudio_qdev->card_slot) {
-		usb_sec_event_ring_cleanup(dev->udev, uaudio_qdev->intr_num);
-		uaudio_iommu_unmap(MEM_EVENT_RING, IOVA_BASE, PAGE_SIZE,
-			PAGE_SIZE);
-		uaudio_dbg("all audio devices disconnected\n");
-	}
-
+	uaudio_event_ring_cleanup_free(dev);
 	wake_up(&dev->disconnect_wq);
 }
 

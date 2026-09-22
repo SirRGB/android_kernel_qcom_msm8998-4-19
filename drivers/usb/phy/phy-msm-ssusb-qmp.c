@@ -1079,6 +1079,7 @@ static void msm_ssphy_qmp_enable_clks(struct msm_ssphy_qmp *phy, bool on)
 		 * request the framework reports only the XO-buffer default
 		 * floor (1000 Hz in captures) for RPM_SMD_LN_BB_CLK1, which
 		 * is the suspected cause of SYSCLK_DET never asserting.
+		 * Rate bookkeeping only; revertible in isolation.
 		 */
 		if (phy->ref_clk_src)
 			clk_set_rate(phy->ref_clk_src,
