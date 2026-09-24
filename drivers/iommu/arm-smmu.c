@@ -2028,6 +2028,51 @@ int iommu_get_fault_ids(struct iommu_domain *domain,
 }
 EXPORT_SYMBOL(iommu_get_fault_ids);
 
+/**
+ * iommu_read_context_bank - read live context-bank registers for a domain.
+ *
+ * Diagnostic helper for callers that hand a domain's translations to a
+ * non-CPU consumer (e.g. the ADSP USB-audio path): read the armed CB
+ * registers back from the hardware at enable time so a device-side
+ * translation fault can be compared against what the SMMU actually has
+ * programmed.
+ */
+int iommu_read_context_bank(struct iommu_domain *domain,
+			    struct iommu_cb_diag *diag)
+{
+	struct arm_smmu_domain *smmu_domain;
+	struct arm_smmu_cfg *cfg;
+	struct arm_smmu_device *smmu;
+	void __iomem *cb_base;
+	int ret;
+
+	if (!domain || !diag)
+		return -EINVAL;
+
+	smmu_domain = to_smmu_domain(domain);
+	cfg = &smmu_domain->cfg;
+	smmu = smmu_domain->smmu;
+	if (!smmu)
+		return -ENODEV;
+
+	ret = arm_smmu_power_on(smmu->pwr);
+	if (ret)
+		return ret;
+
+	cb_base = ARM_SMMU_CB(smmu, cfg->cbndx);
+	diag->cbndx = cfg->cbndx;
+	diag->ttbr0 = readq_relaxed(cb_base + ARM_SMMU_CB_TTBR0);
+	if (cfg->cbar == CBAR_TYPE_S2_TRANS)
+		diag->ttbr1 = 0;
+	else
+		diag->ttbr1 = readq_relaxed(cb_base + ARM_SMMU_CB_TTBR1);
+	diag->sctlr = readl_relaxed(cb_base + ARM_SMMU_CB_SCTLR);
+
+	arm_smmu_power_off(smmu->pwr);
+	return 0;
+}
+EXPORT_SYMBOL(iommu_read_context_bank);
+
 static irqreturn_t arm_smmu_context_fault(int irq, void *dev)
 {
 	int flags, ret, tmp;
