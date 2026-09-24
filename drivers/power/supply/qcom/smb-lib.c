@@ -938,17 +938,6 @@ int smblib_set_icl_current(struct smb_charger *chg, int icl_ua)
 	int rc = 0;
 	bool override;
 
-	pr_info("LEDCHG_PROBE: set_icl: icl_ua=%d typec_mode=%d real_type=%d non_std=%d\n",
-		icl_ua, chg->typec_mode, chg->real_charger_type,
-		chg->non_std_chg_present);
-	pr_info("LEDCHG_PROBE: set_icl voters: USB_PSY=%d DCP=%d LEGACY=%d PD=%d USER=%d AICL=%d\n",
-		get_client_vote_locked(chg->usb_icl_votable, USB_PSY_VOTER),
-		get_client_vote_locked(chg->usb_icl_votable, DCP_VOTER),
-		get_client_vote_locked(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER),
-		get_client_vote_locked(chg->usb_icl_votable, PD_VOTER),
-		get_client_vote_locked(chg->usb_icl_votable, USER_VOTER),
-		get_client_vote_locked(chg->usb_icl_votable, AICL_RERUN_VOTER));
-
 	/* suspend and return if 25mA or less is requested */
 	if (icl_ua <= USBIN_25MA)
 		return smblib_set_usb_suspend(chg, true);
@@ -2476,10 +2465,6 @@ int smblib_get_prop_usb_online(struct smb_charger *chg,
 	int rc = 0;
 	u8 stat;
 
-	pr_info("LEDCHG_PROBE: usb_online: user_vote=%d vbus_present=%d\n",
-		get_client_vote_locked(chg->usb_icl_votable, USER_VOTER),
-		chg->vbus_present);
-
 	if (get_client_vote_locked(chg->usb_icl_votable, USER_VOTER) == 0) {
 		val->intval = false;
 		return rc;
@@ -2498,9 +2483,6 @@ int smblib_get_prop_usb_online(struct smb_charger *chg,
 	}
 	smblib_dbg(chg, PR_REGISTER, "POWER_PATH_STATUS = 0x%02x\n",
 		   stat);
-	pr_info("LEDCHG_PROBE: usb_online: PPS=0x%02x use_usbin=%d valid=%d\n",
-		stat, !!(stat & USE_USBIN_BIT),
-		!!(stat & VALID_INPUT_POWER_SOURCE_STS_BIT));
 
 	val->intval = (stat & USE_USBIN_BIT) &&
 		      (stat & VALID_INPUT_POWER_SOURCE_STS_BIT);
@@ -3753,8 +3735,6 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 
 	last_vbus_present = chg->vbus_present;
 	chg->dash_on = get_prop_fast_chg_started(chg);
-	pr_info("LEDCHG_PROBE: usb_plugin enter: last_vbus_present=%d dash_on=%d\n",
-			last_vbus_present, chg->dash_on);
 	if (chg->dash_on)
 		return;
 #endif
@@ -3771,9 +3751,6 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 
 #ifdef CONFIG_MACH_ONEPLUS_MSM8998
 	chg->vbus_present = vbus_rising;
-	pr_info("LEDCHG_PROBE: usb_plugin: vbus_rising=%d vbus_present=%d typec_mode=%d real_type=%d\n",
-			vbus_rising, chg->vbus_present, chg->typec_mode,
-			chg->real_charger_type);
 	if (last_vbus_present != chg->vbus_present) {
 		if (chg->vbus_present)
 			__pm_stay_awake(&chg->chg_wake_lock);
@@ -4180,10 +4157,6 @@ static void smblib_handle_apsd_done(struct smb_charger *chg, bool rising)
 
 	apsd_result = smblib_update_usb_type(chg);
 
-	pr_info("LEDCHG_PROBE: apsd_done: name=%s pst=%d typec_mode=%d legacy_valid=%d\n",
-		apsd_result->name, apsd_result->pst, chg->typec_mode,
-		chg->typec_legacy_valid);
-
 	if (!chg->typec_legacy_valid)
 		smblib_force_legacy_icl(chg, apsd_result->pst);
 
@@ -4227,8 +4200,6 @@ static void smblib_handle_apsd_done(struct smb_charger *chg, bool rising)
 
 		if (chg->is_aging_test)
 			current_limit_ua = DEFAULT_AGAING_CHG_MA * 1000;
-		pr_info("LEDCHG_PROBE: apsd_done: current_limit_ua=%d\n",
-				current_limit_ua);
 		if (current_limit_ua)
 			vote(chg->usb_icl_votable, DCP_VOTER, true,
 					current_limit_ua);
