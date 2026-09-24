@@ -105,8 +105,6 @@
 			"DMIC4", "MIC BIAS3",
 			"MIC BIAS3", "Digital Mic4",
 			"DMIC5", "MIC BIAS3",
-			"MIC BIAS3", "Digital Mic5",
-			"SpkrLeft IN", "SPK1 OUT",
-			"SpkrRight IN", "SPK2 OUT";
+			"MIC BIAS3", "Digital Mic5";
 	};
 };
