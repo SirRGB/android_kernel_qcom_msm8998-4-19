@@ -71,6 +71,13 @@ struct iommu_fault_ids {
 	u32 mid;
 };
 
+struct iommu_cb_diag {
+	u32 cbndx;
+	u64 ttbr0;
+	u64 ttbr1;
+	u32 sctlr;
+};
+
 struct iommu_domain_geometry {
 	dma_addr_t aperture_start; /* First address that can be mapped    */
 	dma_addr_t aperture_end;   /* Last address that can be mapped     */
@@ -393,6 +400,8 @@ extern void iommu_set_fault_handler(struct iommu_domain *domain,
 			iommu_fault_handler_t handler, void *token);
 extern int iommu_get_fault_ids(struct iommu_domain *domain,
 				struct iommu_fault_ids *f_ids);
+extern int iommu_read_context_bank(struct iommu_domain *domain,
+				   struct iommu_cb_diag *diag);
 extern void iommu_get_resv_regions(struct device *dev, struct list_head *list);
 extern void iommu_put_resv_regions(struct device *dev, struct list_head *list);
 extern int iommu_request_dm_for_dev(struct device *dev);
@@ -651,6 +660,11 @@ static inline void iommu_set_fault_handler(struct iommu_domain *domain,
 }
 static inline int iommu_get_fault_ids(struct iommu_domain *domain,
 				struct iommu_fault_ids *f_ids)
+{
+	return -EINVAL;
+}
+static inline int iommu_read_context_bank(struct iommu_domain *domain,
+				   struct iommu_cb_diag *diag)
 {
 	return -EINVAL;
 }
