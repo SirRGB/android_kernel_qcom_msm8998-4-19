@@ -1116,6 +1116,7 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 {
 	int ret = 0;
 	u32 left_lm_w = left_lm_w_from_mfd(mfd);
+	u32 total_lm_w = 0;
 	u64 flags;
 	bool is_right_blend = false;
 
@@ -1123,6 +1124,13 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
 	struct mdss_data_type *mdata = mfd_to_mdata(mfd);
 	struct mdp_input_layer *layer = vinfo->layer;
+
+	/* Mirror domain for the panel orientation: the full panel width. */
+	total_lm_w = left_lm_w;
+	if (mdp5_data->ctl->mixer_right)
+		total_lm_w += mdp5_data->ctl->mixer_right->width -
+			(mfd->panel_info->lcdc.border_left +
+			 mfd->panel_info->lcdc.border_right);
 
 	mixer = mdss_mdp_mixer_get(mdp5_data->ctl, mixer_mux);
 	pipe->src_fmt = mdss_mdp_get_format_params(layer->buffer.format);
@@ -1159,6 +1167,16 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	if (layer->flags & MDP_LAYER_SECURE_CAMERA_SESSION)
 		pipe->flags |= MDP_SECURE_CAMERA_OVERLAY_SESSION;
 
+	/*
+	 * The SDM660 display HAL leaves panel orientation to the kernel in the
+	 * atomic commit path. Compose the panel flip onto the pipe source flip
+	 * here; solid fill has no source to flip. Keep layer->flags untouched so
+	 * pipe->layer stays identical to the incoming layer for the reconfig
+	 * fast path.
+	 */
+	if (mfd->panel_orientation && !(pipe->flags & MDP_SOLID_FILL))
+		pipe->flags ^= mfd->panel_orientation;
+
 	pipe->is_fg = layer->flags & MDP_LAYER_FORGROUND;
 	pipe->img_width = layer->buffer.width & 0x3fff;
 	pipe->img_height = layer->buffer.height & 0x3fff;
@@ -1170,6 +1188,18 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	pipe->dst.y = layer->dst_rect.y;
 	pipe->dst.w = layer->dst_rect.w;
 	pipe->dst.h = layer->dst_rect.h;
+	/*
+	 * Mirror the destination about the panel centre so partial layers land
+	 * on the physically correct side of an oriented panel. The MDP flip
+	 * above only flips the source fetch; placement is independent.
+	 */
+	if (mfd->panel_orientation) {
+		if (mfd->panel_orientation & MDP_FLIP_LR)
+			pipe->dst.x = total_lm_w - pipe->dst.x - pipe->dst.w;
+		if (mfd->panel_orientation & MDP_FLIP_UD)
+			pipe->dst.y = mfd->panel_info->yres -
+					pipe->dst.y - pipe->dst.h;
+	}
 	pipe->horz_deci = layer->horz_deci;
 	pipe->vert_deci = layer->vert_deci;
 	pipe->bg_color = layer->bg_color;
