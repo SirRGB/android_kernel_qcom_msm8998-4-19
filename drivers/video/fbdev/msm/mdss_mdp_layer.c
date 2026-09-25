@@ -1170,16 +1170,6 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	if (layer->flags & MDP_LAYER_SECURE_CAMERA_SESSION)
 		pipe->flags |= MDP_SECURE_CAMERA_OVERLAY_SESSION;
 
-	/*
-	 * The SDM660 display HAL leaves panel orientation to the kernel in the
-	 * atomic commit path. Compose the panel flip onto the pipe source flip
-	 * here; solid fill has no source to flip. Keep layer->flags untouched so
-	 * pipe->layer stays identical to the incoming layer for the reconfig
-	 * fast path.
-	 */
-	if (mfd->panel_orientation && !(pipe->flags & MDP_SOLID_FILL))
-		pipe->flags ^= mfd->panel_orientation;
-
 	pipe->is_fg = layer->flags & MDP_LAYER_FORGROUND;
 	pipe->img_width = layer->buffer.width & 0x3fff;
 	pipe->img_height = layer->buffer.height & 0x3fff;
@@ -1192,9 +1182,9 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	pipe->dst.w = layer->dst_rect.w;
 	pipe->dst.h = layer->dst_rect.h;
 	/*
-	 * Mirror the destination about the panel centre so partial layers land
-	 * on the physically correct side of an oriented panel. The MDP flip
-	 * above only flips the source fetch; placement is independent.
+	 * Mirror the destination about the panel centre so layers land on the
+	 * physically correct side of an oriented panel. The source flip is set
+	 * by the display HAL; this is placement only.
 	 */
 	if (mfd->panel_orientation) {
 		if (mfd->panel_orientation & MDP_FLIP_LR)
