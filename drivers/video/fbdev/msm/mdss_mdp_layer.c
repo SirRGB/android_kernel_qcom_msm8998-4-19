@@ -1170,6 +1170,17 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	if (layer->flags & MDP_LAYER_SECURE_CAMERA_SESSION)
 		pipe->flags |= MDP_SECURE_CAMERA_OVERLAY_SESSION;
 
+	/*
+	 * The display HAL has no panel-orientation consumer: the vendor strategy
+	 * extension's flip path is disabled and the HAL source never reads
+	 * panel_orientation. Compose the panel flip onto the pipe source here so
+	 * the panel is actually rotated; solid fill has no source to flip.
+	 * layer->flags stays untouched so pipe->layer remains byte-identical to
+	 * the incoming layer for the atomic reconfiguration fast path.
+	 */
+	if (mfd->panel_orientation && !(pipe->flags & MDP_SOLID_FILL))
+		pipe->flags ^= mfd->panel_orientation;
+
 	pipe->is_fg = layer->flags & MDP_LAYER_FORGROUND;
 	pipe->img_width = layer->buffer.width & 0x3fff;
 	pipe->img_height = layer->buffer.height & 0x3fff;
@@ -1182,9 +1193,9 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	pipe->dst.w = layer->dst_rect.w;
 	pipe->dst.h = layer->dst_rect.h;
 	/*
-	 * Mirror the destination about the panel centre so layers land on the
-	 * physically correct side of an oriented panel. The source flip is set
-	 * by the display HAL; this is placement only.
+	 * Mirror the destination about the panel centre so every layer lands on
+	 * the physically correct side; together with the source flip above this
+	 * rotates the whole composition.
 	 */
 	if (mfd->panel_orientation) {
 		if (mfd->panel_orientation & MDP_FLIP_LR)
