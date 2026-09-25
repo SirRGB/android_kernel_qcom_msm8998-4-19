@@ -134,6 +134,11 @@ static int __tri_led_config_pwm(struct qpnp_led_dev *led,
 	pstate.output_pattern = NULL;
 	rc = pwm_apply_state(led->pwm_dev, &pstate);
 
+	pr_info("LEDDBG %s pwm: comm=%s type=%s en=%d period=%llu duty=%llu rc=%d\n",
+			led->cdev.name, current->comm,
+			led->led_setting.breath ? "MOD" : "FIX",
+			pstate.enabled, pstate.period, pstate.duty_cycle, rc);
+
 	if (rc < 0)
 		dev_err(led->chip->dev, "Apply PWM state for %s led failed, rc=%d\n",
 					led->cdev.name, rc);
@@ -226,6 +231,11 @@ static int qpnp_tri_led_set(struct qpnp_led_dev *led)
 	enum led_brightness brightness = led->led_setting.brightness;
 	int rc = 0;
 
+	pr_info("LEDDBG %s set: comm=%s brt=%d blink=%d breath=%d on=%llu off=%llu\n",
+			led->cdev.name, current->comm, brightness,
+			led->led_setting.blink, led->led_setting.breath,
+			led->led_setting.on_ms, led->led_setting.off_ms);
+
 	if (led->led_setting.blink) {
 		on_ms = led->led_setting.on_ms;
 		off_ms = led->led_setting.off_ms;
@@ -275,6 +285,10 @@ static int qpnp_tri_led_set(struct qpnp_led_dev *led)
 		led->breathing = false;
 	}
 
+	pr_info("LEDDBG %s done: rc=%d period=%llu duty=%llu blinking=%d breathing=%d cdev_brt=%d\n",
+			led->cdev.name, rc, period_ns, duty_ns,
+			led->blinking, led->breathing, led->cdev.brightness);
+
 	return rc;
 }
 
@@ -288,6 +302,9 @@ static int qpnp_tri_led_set_brightness(struct led_classdev *led_cdev,
 	mutex_lock(&led->lock);
 	if (brightness > LED_FULL)
 		brightness = LED_FULL;
+
+	pr_info("LEDDBG %s brt_store: comm=%s val=%d\n",
+			led->cdev.name, current->comm, brightness);
 
 	if (brightness == led->led_setting.brightness &&
 			!led->blinking && !led->breathing) {
@@ -327,6 +344,8 @@ static int qpnp_tri_led_set_blink(struct led_classdev *led_cdev,
 	int rc = 0;
 
 	mutex_lock(&led->lock);
+	pr_info("LEDDBG %s blink_set: comm=%s on=%lu off=%lu\n",
+			led->cdev.name, current->comm, *on_ms, *off_ms);
 	if (led->blinking && *on_ms == led->led_setting.on_ms &&
 			*off_ms == led->led_setting.off_ms) {
 		dev_dbg(led_cdev->dev, "Ignore, on/off setting is not changed: on %lums, off %lums\n",
