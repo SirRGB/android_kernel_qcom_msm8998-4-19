@@ -1109,14 +1109,6 @@ static int __validate_pipe_priorities(struct mdss_mdp_pipe *left,
 	return 0;
 }
 
-static inline u32 mdss_mdp_mirror_dst_x(struct msm_fb_data_type *mfd,
-					u32 total_lm_w, u32 x, u32 w)
-{
-	if (mfd->panel_orientation & MDP_FLIP_LR)
-		return total_lm_w - x - w;
-	return x;
-}
-
 static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	struct mdss_mdp_validate_info_t *vinfo, struct mdss_mdp_pipe *pipe,
 	struct mdss_mdp_pipe *left_blend_pipe, bool is_single_layer,

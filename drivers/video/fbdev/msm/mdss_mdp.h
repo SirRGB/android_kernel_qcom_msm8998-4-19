@@ -1469,6 +1469,14 @@ static inline u32 right_lm_w_from_mfd(struct msm_fb_data_type *mfd)
 	return width;
 }
 
+static inline u32 mdss_mdp_mirror_dst_x(struct msm_fb_data_type *mfd,
+					u32 total_lm_w, u32 x, u32 w)
+{
+	if (mfd->panel_orientation & MDP_FLIP_LR)
+		return total_lm_w - x - w;
+	return x;
+}
+
 static inline bool mdss_mdp_is_tile_format(struct mdss_mdp_format_params *fmt)
 {
 	return fmt && (fmt->fetch_mode == MDSS_MDP_FETCH_TILE);
