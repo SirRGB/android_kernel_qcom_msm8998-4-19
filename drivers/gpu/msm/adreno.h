@@ -1754,6 +1754,9 @@ static inline unsigned int counter_delta(struct kgsl_device *device,
 	bool overflow = true;
 	static unsigned int perfctr_pwr_hi;
 	unsigned int prev_perfctr_pwr_hi = 0;
+	/* TEMPORARY d-kgslbusy diagnostic - drop before adoption */
+	bool dbg = false;
+	unsigned int prev_lo = 0;
 
 	/* Read the value */
 	kgsl_regread(device, reg, &val);
@@ -1761,6 +1764,9 @@ static inline unsigned int counter_delta(struct kgsl_device *device,
 	if (adreno_is_a5xx(adreno_dev) && reg == adreno_getreg
 		(adreno_dev, ADRENO_REG_RBBM_PERFCTR_RBBM_0_LO)) {
 		prev_perfctr_pwr_hi = perfctr_pwr_hi;
+		/* TEMPORARY d-kgslbusy diagnostic - drop before adoption */
+		dbg = true;
+		prev_lo = *counter;
 		overflow = is_power_counter_overflow(adreno_dev, reg,
 				*counter, &perfctr_pwr_hi);
 	}
@@ -1786,6 +1792,14 @@ static inline unsigned int counter_delta(struct kgsl_device *device,
 	}
 
 	*counter = val;
+
+	/* TEMPORARY d-kgslbusy diagnostic - drop before adoption */
+	if (dbg)
+		dev_info_ratelimited(device->dev,
+			"d-kgslbusy: lo=0x%08x prev_lo=0x%08x hi=0x%08x prev_hi=0x%08x ovf=%d delta=%u\n",
+			val, prev_lo, perfctr_pwr_hi, prev_perfctr_pwr_hi,
+			overflow, ret);
+
 	return ret;
 }
 

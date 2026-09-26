@@ -3856,6 +3856,12 @@ static void adreno_power_stats(struct kgsl_device *device,
 			kgsl_pwrctrl_active_freq(pwr));
 	}
 
+	/* TEMPORARY d-kgslbusy diagnostic - drop before adoption */
+	dev_info_ratelimited(device->dev,
+		"d-kgslbusy: gpu_busy=%llu pwrlevel=%u freq=%lu busy_time=%llu\n",
+		gpu_busy, pwr->active_pwrlevel,
+		kgsl_pwrctrl_active_freq(pwr), (u64)stats->busy_time);
+
 	if (device->pwrctrl.bus_control) {
 		uint64_t ram_cycles = 0, starved_ram = 0;
 
