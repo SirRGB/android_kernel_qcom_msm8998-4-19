@@ -31,7 +31,6 @@
 #include <dt-bindings/clock/qcom,gpucc-msm8998.h>
 
 #include "common.h"
-#include "clk-debug.h"
 #include "clk-regmap.h"
 #include "clk-pll.h"
 #include "clk-rcg.h"
@@ -48,6 +47,7 @@
 #define CRC_SID_FSM_OFFSET			0x10A0
 #define CRC_MND_CFG_OFFSET			0x10A4
 #define GPU_GX_BCR_OFFSET				0x1090
+#define GPU_GX_BCR_BLK_ARES_MASK			BIT(0)
 
 #define F(f, s, h, m, n) { (f), (s), (2 * (h) - 1), (m), (n) }
 #define F_GFX(f, s, h, m, n, sf) { (f), (s), (2 * (h) - 1), (m), (n), (sf) }
@@ -357,35 +357,28 @@ static struct clk_branch gpucc_rbcpr_clk = {
 	},
 };
 
-#if 0
-static struct mux_clk gpucc_gcc_dbg_clk = {
-	.ops = &mux_reg_ops,
-	.en_mask = BIT(16),
-	.mask = 0x3FF,
-	.offset = GPUCC_DEBUG_CLK_CTL,
-	.en_offset = GPUCC_DEBUG_CLK_CTL,
-	MUX_SRC_LIST(
-		{ &gpucc_rbcpr_clk.c, 0x0003 },
-		{ &gpucc_rbbmtimer_clk.c, 0x0005 },
-		{ &gpucc_gfx3d_isense_clk.c, 0x000a },
-	),
-	.clkr.hw.init = &(struct clk_init_data) {
-		.name = "gpucc_gcc_dbg_clk",
-		.ops = &clk_ops_gen_mux,
-		.flags = CLKFLAG_NO_RATE_CACHE,
-	},
-};
-#endif
-
-static void __iomem *virt_base_gfx;
-static void enable_gfx_crc(void)
+/*
+ * One-time CRC training pass, run before any gdsc/regulator or kgsl
+ * consumer exists.
+ *
+ * GPUCC binds at arch_initcall, while the gdsc-regulator driver that owns
+ * the GPU_CX/GPU_GX domains binds at subsys_initcall and gdsc_gpu_gx
+ * itself consumes GFX3D_CLK_SRC from this driver. Taking a supply here
+ * would therefore form a probe cycle that deferred probing cannot resolve:
+ * on -EPROBE_DEFER devres_release_all() runs before the device is queued
+ * for reprobe, so the clocks registered below would be dropped and neither
+ * driver could ever bind.
+ *
+ * The raw register accesses are consequently deliberate: they are
+ * unrefcounted, run once before gdsc or kgsl can hold these domains, touch
+ * only the documented bit of each register, and return both domains
+ * collapsed with the graphics rail off, which is the state gdsc and kgsl
+ * expect at boot.
+ */
+static void enable_gfx_crc(struct regmap *regmap)
 {
-	u32 regval;
-
 	/* Turn on the GPU_CX GDSC */
-	regval = readl_relaxed(virt_base_gfx + GPU_CX_GDSCR_OFFSET);
-	regval &= ~SW_COLLAPSE_MASK;
-	writel_relaxed(regval, virt_base_gfx + GPU_CX_GDSCR_OFFSET);
+	regmap_update_bits(regmap, GPU_CX_GDSCR_OFFSET, SW_COLLAPSE_MASK, 0);
 
 	/* Wait for 10usecs to let the GDSC turn ON */
 	mb();
@@ -395,34 +388,30 @@ static void enable_gfx_crc(void)
 	if (regulator_enable(vdd_gpucc.regulator[0]))
 		pr_warn("Failed to enable VDD_GPUCC during CRC sequence!\n");
 	/* Turn on the GPU_GX GDSC */
-	writel_relaxed(0x1, virt_base_gfx + GPU_GX_BCR_OFFSET);
+	regmap_update_bits(regmap, GPU_GX_BCR_OFFSET, GPU_GX_BCR_BLK_ARES_MASK,
+			   GPU_GX_BCR_BLK_ARES_MASK);
 
 	/*
 	 * BLK_ARES should be kept asserted for 1us before being de-asserted.
 	 */
 	wmb();
 	udelay(1);
-	writel_relaxed(0x0, virt_base_gfx + GPU_GX_BCR_OFFSET);
-	regval = readl_relaxed(virt_base_gfx + 0x130);
-	regval |= BIT(4);
-	writel_relaxed(regval, virt_base_gfx + 0x130);
+	regmap_update_bits(regmap, GPU_GX_BCR_OFFSET, GPU_GX_BCR_BLK_ARES_MASK,
+			   0);
+	regmap_update_bits(regmap, 0x130, BIT(4), BIT(4));
 
 	/* Keep reset asserted for at-least 1us before continuing. */
 	wmb();
 	udelay(1);
-	regval &= ~BIT(4);
-	writel_relaxed(regval, virt_base_gfx + 0x130);
+	regmap_update_bits(regmap, 0x130, BIT(4), 0);
 
 	/* Make sure GMEM_RESET is de-asserted before continuing. */
 	wmb();
-	regval &= ~BIT(0);
-	writel_relaxed(regval, virt_base_gfx + 0x130);
+	regmap_update_bits(regmap, 0x130, BIT(0), 0);
 
 	/* All previous writes should be done at this point */
 	wmb();
-	regval = readl_relaxed(virt_base_gfx + GPU_GX_GDSCR_OFFSET);
-	regval &= ~SW_COLLAPSE_MASK;
-	writel_relaxed(regval, virt_base_gfx + GPU_GX_GDSCR_OFFSET);
+	regmap_update_bits(regmap, GPU_GX_GDSCR_OFFSET, SW_COLLAPSE_MASK, 0);
 
 	/* Wait for 10usecs to let the GDSC turn ON */
 	mb();
@@ -432,8 +421,8 @@ static void enable_gfx_crc(void)
 	clk_prepare_enable(gpucc_gfx3d_clk.clkr.hw.clk);
 
 	/* Enabling MND RC in Bypass mode */
-	writel_relaxed(0x00015010, virt_base_gfx + CRC_MND_CFG_OFFSET);
-	writel_relaxed(0x00800000, virt_base_gfx + CRC_SID_FSM_OFFSET);
+	regmap_write(regmap, CRC_MND_CFG_OFFSET, 0x00015010);
+	regmap_write(regmap, CRC_SID_FSM_OFFSET, 0x00800000);
 
 	/* Wait for 32 cycles before continuing */
 	udelay(2);
@@ -443,53 +432,30 @@ static void enable_gfx_crc(void)
 	clk_disable_unprepare(gpucc_gfx3d_clk.clkr.hw.clk);
 
 	/* Turn off the gpu_cx and gpu_gx GDSCs */
-	regval = readl_relaxed(virt_base_gfx + GPU_GX_GDSCR_OFFSET);
-	regval |= SW_COLLAPSE_MASK;
-	writel_relaxed(regval, virt_base_gfx + GPU_GX_GDSCR_OFFSET);
+	regmap_update_bits(regmap, GPU_GX_GDSCR_OFFSET, SW_COLLAPSE_MASK,
+			   SW_COLLAPSE_MASK);
 
 	/* Write to disable GX GDSC should go through before continuing */
 	wmb();
-	regval = readl_relaxed(virt_base_gfx + 0x130);
-	regval |= BIT(0);
-	writel_relaxed(regval, virt_base_gfx + 0x130);
+	regmap_update_bits(regmap, 0x130, BIT(0), BIT(0));
 
 	/* Make sure GMEM_CLAMP_IO is asserted before continuing. */
 	wmb();
 	regulator_disable(vdd_gpucc.regulator[0]);
-	regval = readl_relaxed(virt_base_gfx + GPU_CX_GDSCR_OFFSET);
-	regval |= SW_COLLAPSE_MASK;
-	writel_relaxed(regval, virt_base_gfx + GPU_CX_GDSCR_OFFSET);
+	regmap_update_bits(regmap, GPU_CX_GDSCR_OFFSET, SW_COLLAPSE_MASK,
+			   SW_COLLAPSE_MASK);
 }
 
-/*
-static struct mux_clk gfxcc_dbg_clk = {
-	.ops = &mux_reg_ops,
-	.en_mask = BIT(16),
-	.mask = 0x3FF,
-	.offset = GPUCC_DEBUG_CLK_CTL,
-	.en_offset = GPUCC_DEBUG_CLK_CTL,
-	MUX_SRC_LIST(
-		{ &gpucc_gfx3d_clk.c, 0x0008 },
-	),
-	.clkr.hw.init = &(struct clk_init_data) {
-		.name = "gfxcc_dbg_clk",
-		.ops = &clk_ops_gen_mux,
-		.flags = CLKFLAG_NO_RATE_CACHE,
-	},
-};
-*/
 
-static struct clk_regmap *gpucc_msm8998_clocks[] = {
+static struct clk_regmap *gfxcc_msm8998_clocks[] = {
 	[GPU_PLL0_PLL] = &gpu_pll0_pll.clkr,
 	[GPU_PLL0_PLL_OUT_EVEN] = &gpu_pll0_out_even.clkr,
 	[GPU_PLL0_PLL_OUT_ODD] = &gpu_pll0_out_odd.clkr,
 	[GFX3D_CLK_SRC] = &gfx3d_clk_src.clkr,
 	[GPUCC_GFX3D_CLK] = &gpucc_gfx3d_clk.clkr,
-	//[GPUCC_DBG_CLK] = &gfxcc_dbg_clk.clkr,
-	//[GPUCC_GCC_DBG_CLK] = &gpucc_gcc_dbg_clk.clkr,
 };
 
-static struct clk_regmap *gpucc_msm8998_early_clocks[] = {
+static struct clk_regmap *gpucc_msm8998_clocks[] = {
 	[GPUCC_XO] = &gpucc_xo.clkr,
 	[RBCPR_CLK_SRC] = &rbcpr_clk_src.clkr,
 	[GPUCC_RBCPR_CLK] = &gpucc_rbcpr_clk.clkr,
@@ -507,19 +473,19 @@ static const struct regmap_config gpucc_msm8998_regmap_config = {
 	.fast_io	= true,
 };
 
-static const struct qcom_cc_desc gpucc_msm8998_desc = {
+static const struct qcom_cc_desc gfxcc_msm8998_desc = {
 	.config = &gpucc_msm8998_regmap_config,
-	.clks = gpucc_msm8998_clocks,
-	.num_clks = ARRAY_SIZE(gpucc_msm8998_clocks),
+	.clks = gfxcc_msm8998_clocks,
+	.num_clks = ARRAY_SIZE(gfxcc_msm8998_clocks),
 };
 
-int gpucc_msm8998_probe(struct platform_device *pdev)
+int gfxcc_msm8998_probe(struct platform_device *pdev)
 {
 	struct resource *res;
 	struct regmap *regmap;
 	struct clk *tmp;
+	void __iomem *base;
 	int rc;
-	u32 regval;
 
 	tmp = devm_clk_get(&pdev->dev, "gpll0");
 	if (IS_ERR(tmp)) {
@@ -535,9 +501,8 @@ int gpucc_msm8998_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	virt_base_gfx = devm_ioremap(&pdev->dev, res->start,
-					resource_size(res));
-	if (IS_ERR(virt_base_gfx)) {
+	base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+	if (IS_ERR(base)) {
 		dev_err(&pdev->dev, "Unable to map GFX3D clock controller.\n");
 		return -EINVAL;
 	}
@@ -549,8 +514,8 @@ int gpucc_msm8998_probe(struct platform_device *pdev)
 		return rc;
 	}
 
-	regmap = devm_regmap_init_mmio(&pdev->dev, virt_base_gfx,
-					gpucc_msm8998_desc.config);
+	regmap = devm_regmap_init_mmio(&pdev->dev, base,
+					gfxcc_msm8998_desc.config);
 	if (IS_ERR(regmap)) {
 		dev_err(&pdev->dev, "Failed to init regmap\n");
 		return PTR_ERR(regmap);
@@ -560,14 +525,6 @@ int gpucc_msm8998_probe(struct platform_device *pdev)
 	if (IS_ERR(regmap))
 		return PTR_ERR(regmap);
 */
-	/* Early GPUCC is responsible for this, check if it succeeded */
-	if (IS_ERR(vdd_dig.regulator[0])) {
-		if (PTR_ERR(vdd_dig.regulator[0]) != -EPROBE_DEFER)
-			dev_err(&pdev->dev,
-				"Unable to get vdd_dig regulator\n");
-		return PTR_ERR(vdd_dig.regulator[0]);
-	}
-
 	vdd_gpucc.regulator[0] = devm_regulator_get(&pdev->dev, "vdd_gpucc");
 	if (IS_ERR(vdd_gpucc.regulator[0])) {
 		if (PTR_ERR(vdd_gpucc.regulator[0]) != -EPROBE_DEFER)
@@ -589,13 +546,13 @@ int gpucc_msm8998_probe(struct platform_device *pdev)
 
 	clk_fabia_pll_configure(&gpu_pll0_pll, regmap, &gpu_pll0_config);
 
-	rc = qcom_cc_really_probe(pdev, &gpucc_msm8998_desc, regmap);
+	rc = qcom_cc_really_probe(pdev, &gfxcc_msm8998_desc, regmap);
 	if (rc) {
 		dev_err(&pdev->dev, "Failed to register GPUCC clocks\n");
 		return rc;
 	}
 
-	enable_gfx_crc();
+	enable_gfx_crc(regmap);
 
 	/*
 	 * Force periph logic to be ON since after NAP, the value of the perf
@@ -607,9 +564,95 @@ int gpucc_msm8998_probe(struct platform_device *pdev)
 	 * Program the droop detector's gfx_pdn to 1'b1 in order to reduce
 	 * leakage between the graphics and CX rails.
 	 */
-	regval = readl_relaxed(virt_base_gfx + 0x430);
-	regval |= BIT(0);
-	writel_relaxed(regval, virt_base_gfx + 0x430);
+	regmap_update_bits(regmap, 0x430, BIT(0), BIT(0));
+
+	dev_info(&pdev->dev, "Registered GFXCC clocks\n");
+	return 0;
+}
+
+static const struct of_device_id gfxcc_msm8998_match_table[] = {
+	{ .compatible = "qcom,gfxcc-msm8998" },
+	{},
+};
+
+static struct platform_driver gfxcc_msm8998_driver = {
+	.probe = gfxcc_msm8998_probe,
+	.driver = {
+		.name = "qcom,gfxcc-msm8998",
+		.of_match_table = gfxcc_msm8998_match_table,
+		.owner = THIS_MODULE,
+	},
+};
+
+int __init gfxcc_msm8998_init(void)
+{
+	return platform_driver_register(&gfxcc_msm8998_driver);
+}
+arch_initcall(gfxcc_msm8998_init);
+
+static const struct qcom_cc_desc gpucc_msm8998_desc = {
+	.config = &gpucc_msm8998_regmap_config,
+	.clks = gpucc_msm8998_clocks,
+	.num_clks = ARRAY_SIZE(gpucc_msm8998_clocks),
+};
+
+int gpucc_msm8998_probe(struct platform_device *pdev)
+{
+	struct resource *res;
+	struct regmap *regmap;
+	struct clk *tmp;
+	void __iomem *base;
+	int rc;
+
+	tmp = devm_clk_get(&pdev->dev, "gpll0");
+	if (IS_ERR(tmp)) {
+		if (PTR_ERR(tmp) != -EPROBE_DEFER)
+			dev_err(&pdev->dev,
+				"The GPLL0 clock cannot be found.\n");
+		return PTR_ERR(tmp);
+	}
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res) {
+		dev_err(&pdev->dev, "Unable to retrieve register base\n");
+		return -ENOMEM;
+	}
+
+	base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+	if (IS_ERR(base)) {
+		dev_err(&pdev->dev, "Unable to map GFX3D clock controller.\n");
+		return -EINVAL;
+	}
+
+	regmap = devm_regmap_init_mmio(&pdev->dev, base,
+					gpucc_msm8998_desc.config);
+	if (IS_ERR(regmap)) {
+		dev_err(&pdev->dev, "Failed to init regmap\n");
+		return PTR_ERR(regmap);
+	}
+
+	vdd_dig.regulator[0] = devm_regulator_get(&pdev->dev, "vdd_dig");
+	if (IS_ERR(vdd_dig.regulator[0])) {
+		if (PTR_ERR(vdd_dig.regulator[0]) != -EPROBE_DEFER)
+			dev_err(&pdev->dev,
+				"Unable to get vdd_dig regulator\n");
+		return PTR_ERR(vdd_dig.regulator[0]);
+	}
+
+	rc = qcom_cc_really_probe(pdev, &gpucc_msm8998_desc, regmap);
+	if (rc) {
+		dev_err(&pdev->dev, "Failed to register GPUCC clocks\n");
+		return rc;
+	}
+
+	/* Set the rate for GPU XO to make the clk API happy */
+	clk_set_rate(gpucc_xo.clkr.hw.clk, 19200000);
+
+	/*
+	 * gpucc_xo works as the root clock for all GPUCC RCGs and GDSCs.
+	 *  Keep it enabled always.
+	 */
+	clk_prepare_enable(gpucc_xo.clkr.hw.clk);
 
 	dev_info(&pdev->dev, "Registered GPUCC clocks\n");
 	return 0;
@@ -634,91 +677,3 @@ int __init gpucc_msm8998_init(void)
 	return platform_driver_register(&gpucc_msm8998_driver);
 }
 arch_initcall(gpucc_msm8998_init);
-
-static const struct qcom_cc_desc gpucc_early_msm8998_desc = {
-	.config = &gpucc_msm8998_regmap_config,
-	.clks = gpucc_msm8998_early_clocks,
-	.num_clks = ARRAY_SIZE(gpucc_msm8998_early_clocks),
-};
-
-int gpucc_early_msm8998_probe(struct platform_device *pdev)
-{
-	struct resource *res;
-	struct regmap *regmap;
-	struct clk *tmp;
-	int rc;
-
-	tmp = devm_clk_get(&pdev->dev, "gpll0");
-	if (IS_ERR(tmp)) {
-		if (PTR_ERR(tmp) != -EPROBE_DEFER)
-			dev_err(&pdev->dev,
-				"The GPLL0 clock cannot be found.\n");
-		return PTR_ERR(tmp);
-	}
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(&pdev->dev, "Unable to retrieve register base\n");
-		return -ENOMEM;
-	}
-
-	virt_base_gfx = devm_ioremap(&pdev->dev, res->start,
-					resource_size(res));
-	if (IS_ERR(virt_base_gfx)) {
-		dev_err(&pdev->dev, "Unable to map GFX3D clock controller.\n");
-		return -EINVAL;
-	}
-
-	regmap = devm_regmap_init_mmio(&pdev->dev, virt_base_gfx,
-					gpucc_early_msm8998_desc.config);
-	if (IS_ERR(regmap)) {
-		dev_err(&pdev->dev, "Failed to init regmap\n");
-		return PTR_ERR(regmap);
-	}
-
-	vdd_dig.regulator[0] = devm_regulator_get(&pdev->dev, "vdd_dig");
-	if (IS_ERR(vdd_dig.regulator[0])) {
-		if (PTR_ERR(vdd_dig.regulator[0]) != -EPROBE_DEFER)
-			dev_err(&pdev->dev,
-				"Unable to get vdd_dig regulator\n");
-		return PTR_ERR(vdd_dig.regulator[0]);
-	}
-
-	rc = qcom_cc_really_probe(pdev, &gpucc_early_msm8998_desc, regmap);
-	if (rc) {
-		dev_err(&pdev->dev, "Failed to register GPUCC clocks\n");
-		return rc;
-	}
-
-	/* Set the rate for GPU XO to make the clk API happy */
-	clk_set_rate(gpucc_xo.clkr.hw.clk, 19200000);
-
-	/*
-	 * gpucc_xo works as the root clock for all GPUCC RCGs and GDSCs.
-	 *  Keep it enabled always.
-	 */
-	clk_prepare_enable(gpucc_xo.clkr.hw.clk);
-
-	dev_info(&pdev->dev, "Registered early GPUCC clocks\n");
-	return 0;
-}
-
-static const struct of_device_id gpucc_early_msm8998_match_table[] = {
-	{ .compatible = "qcom,gpucc-early-msm8998" },
-	{},
-};
-
-static struct platform_driver gpucc_early_msm8998_driver = {
-	.probe = gpucc_early_msm8998_probe,
-	.driver = {
-		.name = "qcom,gpucc-early-msm8998",
-		.of_match_table = gpucc_early_msm8998_match_table,
-		.owner = THIS_MODULE,
-	},
-};
-
-int __init gpucc_early_msm8998_init(void)
-{
-	return platform_driver_register(&gpucc_early_msm8998_driver);
-}
-arch_initcall(gpucc_early_msm8998_init);
