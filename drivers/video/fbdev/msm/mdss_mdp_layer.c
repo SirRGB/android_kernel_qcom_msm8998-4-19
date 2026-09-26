@@ -1109,6 +1109,14 @@ static int __validate_pipe_priorities(struct mdss_mdp_pipe *left,
 	return 0;
 }
 
+static inline u32 mdss_mdp_mirror_dst_x(struct msm_fb_data_type *mfd,
+					u32 total_lm_w, u32 x, u32 w)
+{
+	if (mfd->panel_orientation & MDP_FLIP_LR)
+		return total_lm_w - x - w;
+	return x;
+}
+
 static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	struct mdss_mdp_validate_info_t *vinfo, struct mdss_mdp_pipe *pipe,
 	struct mdss_mdp_pipe *left_blend_pipe, bool is_single_layer,
@@ -1162,21 +1170,6 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	if (layer->flags & MDP_LAYER_SECURE_CAMERA_SESSION)
 		pipe->flags |= MDP_SECURE_CAMERA_OVERLAY_SESSION;
 
-	/*
-	 * Compose the panel flip onto the pipe source for device-composed
-	 * sublayers only. The full-screen base layer already reaches the atomic
-	 * path in the panel orientation: the placement mirror below is a no-op
-	 * for it, yet the panel is upright without any source flip, while
-	 * flipping it turns the whole panel 180. Solid fill has no source to
-	 * flip. layer->flags stays untouched so pipe->layer remains
-	 * byte-identical to the incoming layer for the fast path.
-	 */
-	if (mfd->panel_orientation && !(pipe->flags & MDP_SOLID_FILL) &&
-	    !(layer->dst_rect.x == 0 && layer->dst_rect.y == 0 &&
-	      layer->dst_rect.w == total_lm_w &&
-	      layer->dst_rect.h == mfd->panel_info->yres))
-		pipe->flags ^= mfd->panel_orientation;
-
 	pipe->is_fg = layer->flags & MDP_LAYER_FORGROUND;
 	pipe->img_width = layer->buffer.width & 0x3fff;
 	pipe->img_height = layer->buffer.height & 0x3fff;
@@ -1189,9 +1182,9 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	pipe->dst.w = layer->dst_rect.w;
 	pipe->dst.h = layer->dst_rect.h;
 	/*
-	 * Mirror the destination about the panel centre so every layer lands on
-	 * the physically correct side; together with the source flip above this
-	 * rotates the whole composition.
+	 * Mirror the destination about the panel centre so layers land on the
+	 * physically correct side of an oriented panel. The source flip is set
+	 * by the display HAL; this is placement only.
 	 */
 	if (mfd->panel_orientation) {
 		if (mfd->panel_orientation & MDP_FLIP_LR)

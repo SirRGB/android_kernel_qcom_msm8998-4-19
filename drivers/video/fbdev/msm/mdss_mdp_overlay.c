@@ -942,22 +942,6 @@ int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 	pipe->dst.w = req->dst_rect.w;
 	pipe->dst.h = req->dst_rect.h;
 
-	/*
-	 * The pipe source was flipped for a panel mounted 180 degrees above;
-	 * mirror the destination about the panel centre so the layer lands on
-	 * the opposite side as well and its placement follows the flip.
-	 */
-	if (mfd->panel_orientation) {
-		u32 total_lm_w = left_lm_w + right_lm_w_from_mfd(mfd);
-
-		if (mfd->panel_orientation & MDP_FLIP_LR)
-			pipe->dst.x = mdss_mdp_mirror_dst_x(mfd, total_lm_w,
-					pipe->dst.x, pipe->dst.w);
-		if (mfd->panel_orientation & MDP_FLIP_UD)
-			pipe->dst.y = mfd->panel_info->yres -
-					pipe->dst.y - pipe->dst.h;
-	}
-
 	if (mixer->ctl) {
 		pipe->dst.x += mixer->ctl->border_x_off;
 		pipe->dst.y += mixer->ctl->border_y_off;
