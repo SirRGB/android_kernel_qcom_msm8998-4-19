@@ -1174,19 +1174,10 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	pipe->dst.w = layer->dst_rect.w;
 	pipe->dst.h = layer->dst_rect.h;
 	/*
-	 * Mirror the destination about the panel centre so layers land on the
-	 * physically correct side of an oriented panel. Placement only: the
-	 * source flip is applied where the pipe is set up, so flipping it here
-	 * as well would cancel that flip.
+	 * The panel destination mirror is applied at programming time in
+	 * mdss_mdp_image_setup(), so the reconfiguration fast path cannot leave
+	 * an unmirrored destination in the SSPP.
 	 */
-	if (mfd->panel_orientation) {
-		if (mfd->panel_orientation & MDP_FLIP_LR)
-			pipe->dst.x = mdss_mdp_mirror_dst_x(mfd, total_lm_w,
-					pipe->dst.x, pipe->dst.w);
-		if (mfd->panel_orientation & MDP_FLIP_UD)
-			pipe->dst.y = mfd->panel_info->yres -
-					pipe->dst.y - pipe->dst.h;
-	}
 
 	/* Placement used by the right-half guard below. */
 	layer_dst_x = mdss_mdp_mirror_dst_x(mfd, total_lm_w,

@@ -1967,6 +1967,24 @@ static int mdss_mdp_image_setup(struct mdss_mdp_pipe *pipe,
 	dst = pipe->dst;
 	src = pipe->src;
 
+	/*
+	 * A panel mounted 180 degrees needs the layer destination mirrored about
+	 * the panel centre. Apply it here, at programming time, so the atomic
+	 * reconfiguration fast path and the legacy pipe setup both end up with
+	 * the same value in the SSPP destination registers.
+	 */
+	if (pipe->mfd && pipe->mfd->panel_orientation &&
+	    pipe->mixer_left->type != MDSS_MDP_MIXER_TYPE_WRITEBACK) {
+		u32 total_lm_w = left_lm_w_from_mfd(pipe->mfd) +
+				right_lm_w_from_mfd(pipe->mfd);
+
+		if (pipe->mfd->panel_orientation & MDP_FLIP_LR)
+			dst.x = mdss_mdp_mirror_dst_x(pipe->mfd, total_lm_w,
+					dst.x, dst.w);
+		if (pipe->mfd->panel_orientation & MDP_FLIP_UD)
+			dst.y = pipe->mfd->panel_info->yres - dst.y - dst.h;
+	}
+
 	if (!pipe->mixer_left->ctl->is_video_mode &&
 	    (pipe->mixer_left->type != MDSS_MDP_MIXER_TYPE_WRITEBACK)) {
 
