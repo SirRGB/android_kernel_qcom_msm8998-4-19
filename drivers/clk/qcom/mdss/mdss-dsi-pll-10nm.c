@@ -25,9 +25,6 @@
 
 #define VCO_DELAY_USEC 1
 
-#define MHZ_250		250000000UL
-#define MHZ_500		500000000UL
-#define MHZ_1000	1000000000UL
 #define MHZ_1100	1100000000UL
 #define MHZ_1900	1900000000UL
 #define MHZ_3000	3000000000UL
@@ -120,12 +117,6 @@
 /* Bit definition of SSC control registers */
 #define SSC_CENTER		BIT(0)
 #define SSC_EN			BIT(1)
-#define SSC_FREQ_UPDATE		BIT(2)
-#define SSC_FREQ_UPDATE_MUX	BIT(3)
-#define SSC_UPDATE_SSC		BIT(4)
-#define SSC_UPDATE_SSC_MUX	BIT(5)
-#define SSC_START		BIT(6)
-#define SSC_START_MUX		BIT(7)
 
 /* Dynamic Refresh Control Registers */
 #define DSI_DYNAMIC_REFRESH_PLL_CTRL0		(0x014)
