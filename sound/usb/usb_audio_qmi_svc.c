@@ -190,7 +190,6 @@ enum usb_qmi_audio_format {
 #endif
 
 #define uaudio_err(fmt, ...) uaudio_print(KERN_ERR, fmt, ##__VA_ARGS__)
-#define uaudio_info(fmt, ...) uaudio_print(KERN_INFO, fmt, ##__VA_ARGS__)
 
 #define NUM_LOG_PAGES		10
 
@@ -1199,18 +1198,6 @@ static void handle_uaudio_stream_req(struct qmi_handle *handle,
 
 	if (!ret && req_msg->enable)
 		ret = prepare_qmi_response(subs, req_msg, &resp, info_idx);
-
-	if (!ret && req_msg->enable) {
-		struct iommu_cb_diag diag;
-
-		ret = iommu_read_context_bank(uaudio_qdev->domain, &diag);
-		if (ret)
-			uaudio_info("CB readback failed: %d\n", ret);
-		else
-			uaudio_info(
-				"enable-time CB state: cb=%u ttbr0=0x%016llx ttbr1=0x%016llx sctlr=0x%08x\n",
-				diag.cbndx, diag.ttbr0, diag.ttbr1, diag.sctlr);
-	}
 
 	mutex_unlock(&chip->dev_lock);
 
