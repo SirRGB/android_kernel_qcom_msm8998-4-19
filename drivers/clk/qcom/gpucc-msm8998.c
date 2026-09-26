@@ -32,7 +32,6 @@
 #include <dt-bindings/clock/qcom,gpucc-msm8998.h>
 
 #include "common.h"
-#include "clk-debug.h"
 #include "clk-regmap.h"
 #include "clk-pll.h"
 #include "clk-rcg.h"
@@ -374,26 +373,6 @@ static struct clk_branch gpucc_rbcpr_clk = {
 	},
 };
 
-#if 0
-static struct mux_clk gpucc_gcc_dbg_clk = {
-	.ops = &mux_reg_ops,
-	.en_mask = BIT(16),
-	.mask = 0x3FF,
-	.offset = GPUCC_DEBUG_CLK_CTL,
-	.en_offset = GPUCC_DEBUG_CLK_CTL,
-	MUX_SRC_LIST(
-		{ &gpucc_rbcpr_clk.c, 0x0003 },
-		{ &gpucc_rbbmtimer_clk.c, 0x0005 },
-		{ &gpucc_gfx3d_isense_clk.c, 0x000a },
-	),
-	.clkr.hw.init = &(struct clk_init_data) {
-		.name = "gpucc_gcc_dbg_clk",
-		.ops = &clk_ops_gen_mux,
-		.flags = CLKFLAG_NO_RATE_CACHE,
-	},
-};
-#endif
-
 /*
  * One-time CRC training pass, run before any gdsc/regulator or kgsl
  * consumer exists.
@@ -483,23 +462,6 @@ static void enable_gfx_crc(struct regmap *regmap)
 			   SW_COLLAPSE_MASK);
 }
 
-/*
-static struct mux_clk gfxcc_dbg_clk = {
-	.ops = &mux_reg_ops,
-	.en_mask = BIT(16),
-	.mask = 0x3FF,
-	.offset = GPUCC_DEBUG_CLK_CTL,
-	.en_offset = GPUCC_DEBUG_CLK_CTL,
-	MUX_SRC_LIST(
-		{ &gpucc_gfx3d_clk.c, 0x0008 },
-	),
-	.clkr.hw.init = &(struct clk_init_data) {
-		.name = "gfxcc_dbg_clk",
-		.ops = &clk_ops_gen_mux,
-		.flags = CLKFLAG_NO_RATE_CACHE,
-	},
-};
-*/
 
 static struct clk_regmap *gfxcc_msm8998_clocks[] = {
 	[GPU_PLL0_PLL] = &gpu_pll0_pll.clkr,
@@ -507,8 +469,6 @@ static struct clk_regmap *gfxcc_msm8998_clocks[] = {
 	[GPU_PLL0_PLL_OUT_ODD] = &gpu_pll0_out_odd.clkr,
 	[GFX3D_CLK_SRC] = &gfx3d_clk_src.clkr,
 	[GPUCC_GFX3D_CLK] = &gpucc_gfx3d_clk.clkr,
-	//[GPUCC_DBG_CLK] = &gfxcc_dbg_clk.clkr,
-	//[GPUCC_GCC_DBG_CLK] = &gpucc_gcc_dbg_clk.clkr,
 };
 
 static struct clk_regmap *gpucc_msm8998_clocks[] = {
