@@ -1159,22 +1159,6 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	if (layer->flags & MDP_LAYER_SECURE_CAMERA_SESSION)
 		pipe->flags |= MDP_SECURE_CAMERA_OVERLAY_SESSION;
 
-	/*
-	 * Compose the panel flip onto the pipe source for the device-composed
-	 * sublayers only: the full-screen base already reaches the atomic path
-	 * in the panel orientation, and a solid fill has no source to flip.
-	 * Placement is deliberately left alone - the destination rectangle the
-	 * compositor supplies is already expressed in the panel frame, so
-	 * mirroring it here moves every sublayer to the opposite side of its
-	 * parent. layer->flags stays untouched so pipe->layer remains
-	 * byte-identical to the incoming layer for the fast path.
-	 */
-	if (mfd->panel_orientation && !(pipe->flags & MDP_SOLID_FILL) &&
-	    !(layer->dst_rect.x == 0 && layer->dst_rect.y == 0 &&
-	      layer->dst_rect.w == mfd->panel_info->xres &&
-	      layer->dst_rect.h == mfd->panel_info->yres))
-		pipe->flags ^= mfd->panel_orientation;
-
 	pipe->is_fg = layer->flags & MDP_LAYER_FORGROUND;
 	pipe->img_width = layer->buffer.width & 0x3fff;
 	pipe->img_height = layer->buffer.height & 0x3fff;
