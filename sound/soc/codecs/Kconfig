@@ -998,15 +998,6 @@ config SND_SOC_TFA98XX
 	tristate "NXP Semiconductors TFA98XX amplifier"
 	depends on I2C
 
-config SND_SOC_TFA98XX_DIAGNOSTICS
-	bool "NXP TFA98XX playback diagnostics"
-	depends on SND_SOC_TFA98XX && DEBUG_KERNEL
-	help
-	  Enable bounded playback diagnostic messages for the TFA98XX amplifier.
-	  The messages identify firmware, power, pinctrl, and DSP start results.
-	  This is intended for temporary hardware diagnosis and should remain
-	  disabled in production kernels.
-
 config SND_SOC_TLV320AIC23
 	tristate
 
