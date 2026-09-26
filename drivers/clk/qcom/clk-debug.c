@@ -191,6 +191,7 @@ static int clk_debug_mux_set_parent(struct clk_hw *hw, u8 index)
 const struct clk_ops clk_debug_mux_ops = {
 	.get_parent = clk_debug_mux_get_parent,
 	.set_parent = clk_debug_mux_set_parent,
+	.debug_init = clk_debug_measure_add,
 };
 EXPORT_SYMBOL(clk_debug_mux_ops);
 
