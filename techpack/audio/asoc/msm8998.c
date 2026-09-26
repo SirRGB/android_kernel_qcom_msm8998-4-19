@@ -4559,16 +4559,6 @@ static int msm_mi2s_snd_startup(struct snd_pcm_substream *substream)
 			__func__, cpu_dai->id);
 		goto done;
 	}
-
-#if IS_ENABLED(CONFIG_SND_SOC_TFA98XX_DIAGNOSTICS)
-	if (index == QUAT_MI2S &&
-	    substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		dev_info(rtd->card->dev,
-			 "tfa-link: QUAT RX startup cpu=%s codec=%s\n",
-			 cpu_dai->name,
-			 rtd->codec_dai ? rtd->codec_dai->name : "<none>");
-#endif
-
 	if (index == QUAT_MI2S) {
 		ret_pinctrl = msm_set_pinctrl(pinctrl_info, STATE_MI2S_ACTIVE);
 		if (ret_pinctrl) {
@@ -7129,11 +7119,6 @@ static int msm_configure_tfa98xx(struct snd_soc_card *card)
 
 		link->codec_name = "tfa98xx.9-0036";
 		link->codec_dai_name = "tfa98xx_codec-9-36";
-#if IS_ENABLED(CONFIG_SND_SOC_TFA98XX_DIAGNOSTICS)
-		dev_info(card->dev,
-			 "tfa-link: QUAT RX configured codec=%s dai=%s\n",
-			 link->codec_name, link->codec_dai_name);
-#endif
 		link->codec_of_node = NULL;
 		return 0;
 	}
