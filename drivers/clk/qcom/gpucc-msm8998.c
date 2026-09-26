@@ -565,7 +565,14 @@ int gpucc_msm8998_probe(struct platform_device *pdev)
 	if (IS_ERR(regmap))
 		return PTR_ERR(regmap);
 */
-	/* Early GPUCC is responsible for this, check if it succeeded */
+	/*
+	 * The early GPUCC probe obtains vdd_dig and shares it through this
+	 * module-level vdd class, so the main node carries no supply of its
+	 * own. Only a recorded failure is caught here: the main probe may run
+	 * before the early one, in which case this sees NULL rather than an
+	 * error and the vdd_gpucc get below is what defers the probe until
+	 * both the early clocks and the CPR rail exist.
+	 */
 	if (IS_ERR(vdd_dig.regulator[0])) {
 		if (PTR_ERR(vdd_dig.regulator[0]) != -EPROBE_DEFER)
 			dev_err(&pdev->dev,
