@@ -26,11 +26,21 @@
 #include <linux/proc_fs.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/uidgid.h>
 #include <linux/uaccess.h>
 
 #define VS_CPUCTL_ROOT		"/dev/cpuctl"
 #define VS_PROC_DIR		"vendor_sched"
 #define VS_MAX_VALUE		32
+
+/*
+ * The nodes are world-unwritable and owned by system, matching the Pixel
+ * interface that the power HAL writes as uid 1000. Init runs as root and does
+ * not need the mode relaxed.
+ */
+#define VS_MODE			0220
+#define VS_UID			1000
+#define VS_GID			1000
 
 /*
  * Pixel group names and the cpuctl group each maps to on this platform. Groups
@@ -234,6 +244,7 @@ static const struct file_operations vs_node_ops = {
 static void vs_add_node(const char *name, enum vs_kind kind, int group)
 {
 	struct vs_node *node = &vs_nodes[vs_node_count];
+	struct proc_dir_entry *entry;
 
 	node->name = kstrdup(name, GFP_KERNEL);
 	if (!node->name)
@@ -244,13 +255,15 @@ static void vs_add_node(const char *name, enum vs_kind kind, int group)
 	mutex_init(&node->lock);
 	strscpy(node->value, "0", sizeof(node->value));
 
-	if (!proc_create_data(node->name, 0644, vs_root, &vs_node_ops, node)) {
+	entry = proc_create_data(node->name, VS_MODE, vs_root, &vs_node_ops, node);
+	if (!entry) {
 		pr_warn("vendor_sched: failed to create %s\n", node->name);
 		kfree(node->name);
 		node->name = NULL;
 		return;
 	}
 
+	proc_set_user(entry, KUIDT_INIT(VS_UID), KGIDT_INIT(VS_GID));
 	vs_node_count++;
 }
 
