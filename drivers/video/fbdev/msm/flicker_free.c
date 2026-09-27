@@ -127,6 +127,7 @@ uint32_t mdss_panel_calc_backlight(uint32_t bl_lvl)
 	struct msm_fb_data_type *mfd = ff_mfd;
 	bool target_pcc_en = mdss_backlight_enable;
 
+	/* Nothing to remap with the panel off or without a framebuffer */
 	if (!mfd || !bl_lvl)
 		return bl_lvl;
 
@@ -173,6 +174,7 @@ static ssize_t flicker_free_set_dc(struct device *dev,
 	if (kstrtoint(buf, 0, &value))
 		return -EINVAL;
 
+	/* Without the post-processing payloads there is nothing to drive */
 	if (!payload || !dither_payload)
 		return -ENODEV;
 
