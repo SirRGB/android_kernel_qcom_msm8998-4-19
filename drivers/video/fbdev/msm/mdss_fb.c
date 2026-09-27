@@ -48,6 +48,7 @@
 #include "mdss_sync.h"
 
 #include "mdss_livedisplay.h"
+#include "flicker_free.h"
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MDSS_FB_NUM 3
@@ -1144,6 +1145,9 @@ static int mdss_fb_create_sysfs(struct msm_fb_data_type *mfd)
 	rc = sysfs_create_group(&mfd->fbi->dev->kobj, &mdss_fb_attr_group);
 	if (rc)
 		pr_err("sysfs group creation failed, rc=%d\n", rc);
+
+	mdss_fb_create_flicker_free_sysfs(mfd);
+
 	return mdss_livedisplay_create_sysfs(mfd);
 }
 
@@ -2005,6 +2009,8 @@ static int mdss_fb_start_disp_thread(struct msm_fb_data_type *mfd)
 		mfd->disp_thread = NULL;
 	}
 
+	mdss_fb_update_flicker_free_mfd(mfd);
+
 	return ret;
 }
 
@@ -2015,6 +2021,7 @@ static void mdss_fb_stop_disp_thread(struct msm_fb_data_type *mfd)
 
 	kthread_stop(mfd->disp_thread);
 	mfd->disp_thread = NULL;
+	mdss_fb_update_flicker_free_mfd(NULL);
 }
 
 static void mdss_panel_validate_debugfs_info(struct msm_fb_data_type *mfd)
