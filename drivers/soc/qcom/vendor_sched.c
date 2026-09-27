@@ -1,12 +1,19 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * A compatibility front end for the "/proc/vendor_sched" interface that Pixel
  * userspace writes to.
  *
+ * Copyright (c) 2026, Edrick Sinsuan <evcsinsuan@gmail.com>
+ *
+ * The node set emulated here is the one Pixel's vh_sched module provides in
+ * drivers/soc/google/vh/kernel/sched; no code from that module is used, every
+ * write is translated into a write on the cgroup files this kernel already
+ * exposes.
+ *
  * Pixel keeps its scheduling policy in the vh_sched module, which is built on
  * about two dozen scheduler vendor hooks that this tree does not have. This
  * driver provides only the subset of the vendor_sched node set that Pixel
- * configuration actually writes, and translates every write into a write on the
+ * userspace writes to, and translates every node write into a write on the
  * cgroup files this kernel already exposes: the "cpu" controller carries
  * cpu.uclamp.min, cpu.uclamp.max and cpu.uclamp.latency_sensitive, and its
  * cgroup.procs and tasks files accept a pid.
@@ -24,6 +31,7 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/proc_fs.h>
+#include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/uidgid.h>
@@ -73,6 +81,8 @@ enum vs_kind {
 	VS_SET_PROCS,
 	VS_FORK_RESET_SET,
 	VS_FORK_RESET_CLEAR,
+	VS_TGID_TYPE,
+	VS_RAMPUP_SET,
 };
 
 struct vs_node {
@@ -86,6 +96,38 @@ struct vs_node {
 static struct vs_node *vs_nodes;
 static unsigned int vs_node_count;
 static struct proc_dir_entry *vs_root;
+static struct proc_dir_entry *vs_sched_qos;
+
+/*
+ * The power HAL tags an ADPF session by writing a tgid to check_tgid_type and
+ * reading the tag out of the write return value: 1 is SystemUI, 2 is Chrome,
+ * anything else is the default. Pixel decides that inside vendor_sched; here it
+ * is decided from the task name, which is all this shim can see.
+ */
+#define VS_TAG_SYSTEM_UI	1
+#define VS_TAG_CHROME		2
+
+static int vs_tgid_type(unsigned long tgid, int fallback)
+{
+	struct task_struct *task;
+	char comm[TASK_COMM_LEN];
+
+	task = find_get_task_by_vpid(tgid);
+	if (!task)
+		return fallback;
+
+	get_task_comm(comm, task);
+	put_task_struct(task);
+
+	if (strnstr(comm, "systemui", TASK_COMM_LEN))
+		return VS_TAG_SYSTEM_UI;
+	if (strnstr(comm, "chrome", TASK_COMM_LEN) ||
+	    strnstr(comm, "CrBrowserMain", TASK_COMM_LEN) ||
+	    strnstr(comm, "CrRendererMain", TASK_COMM_LEN))
+		return VS_TAG_CHROME;
+
+	return fallback;
+}
 
 /*
  * Translate one node write into a write on a cgroup file. kernfs parses the
@@ -207,6 +249,21 @@ static ssize_t vs_node_write(struct file *file, const char __user *ubuf,
 	case VS_SET_PROCS:
 		ret = vs_write_pid("cgroup.procs", buf, count);
 		break;
+	case VS_TGID_TYPE: {
+		unsigned long tgid;
+
+		if (kstrtoul(strim(buf), 10, &tgid))
+			return -EINVAL;
+
+		return vs_tgid_type(tgid, count);
+	}
+	case VS_RAMPUP_SET:
+		/*
+		 * Pixel applies this multiplier in its rampup machinery; this shim
+		 * has no such machinery, so the value is accepted and dropped.
+		 */
+		ret = count;
+		break;
 	case VS_FORK_RESET_SET:
 	case VS_FORK_RESET_CLEAR:
 		ret = count;
@@ -241,7 +298,8 @@ static const struct file_operations vs_node_ops = {
 	.llseek	= default_llseek,
 };
 
-static void vs_add_node(const char *name, enum vs_kind kind, int group)
+static void vs_add_node(struct proc_dir_entry *parent, const char *name,
+			enum vs_kind kind, int group)
 {
 	struct vs_node *node = &vs_nodes[vs_node_count];
 	struct proc_dir_entry *entry;
@@ -255,7 +313,7 @@ static void vs_add_node(const char *name, enum vs_kind kind, int group)
 	mutex_init(&node->lock);
 	strscpy(node->value, "0", sizeof(node->value));
 
-	entry = proc_create_data(node->name, VS_MODE, vs_root, &vs_node_ops, node);
+	entry = proc_create_data(node->name, VS_MODE, parent, &vs_node_ops, node);
 	if (!entry) {
 		pr_warn("vendor_sched: failed to create %s\n", node->name);
 		kfree(node->name);
@@ -283,7 +341,7 @@ static int __init vs_init(void)
 	unsigned int g, i;
 	char name[64];
 
-	vs_nodes = kcalloc(ARRAY_SIZE(vs_groups) * ARRAY_SIZE(vs_group_nodes) + 2,
+	vs_nodes = kcalloc(ARRAY_SIZE(vs_groups) * ARRAY_SIZE(vs_group_nodes) + 4,
 			   sizeof(*vs_nodes), GFP_KERNEL);
 	if (!vs_nodes)
 		return -ENOMEM;
@@ -299,12 +357,20 @@ static int __init vs_init(void)
 		for (i = 0; i < ARRAY_SIZE(vs_group_nodes); i++) {
 			snprintf(name, sizeof(name), vs_group_nodes[i].fmt,
 				 vs_groups[g].name);
-			vs_add_node(name, vs_group_nodes[i].kind, g);
+			vs_add_node(vs_root, name, vs_group_nodes[i].kind, g);
 		}
 	}
 
-	vs_add_node("uclamp_fork_reset_set", VS_FORK_RESET_SET, -1);
-	vs_add_node("uclamp_fork_reset_clear", VS_FORK_RESET_CLEAR, -1);
+	vs_add_node(vs_root, "uclamp_fork_reset_set", VS_FORK_RESET_SET, -1);
+	vs_add_node(vs_root, "uclamp_fork_reset_clear", VS_FORK_RESET_CLEAR, -1);
+
+	/* Nodes the power HAL opens directly, outside powerhint.json. */
+	vs_add_node(vs_root, "check_tgid_type", VS_TGID_TYPE, -1);
+
+	vs_sched_qos = proc_mkdir("sched_qos", vs_root);
+	if (vs_sched_qos)
+		proc_set_user(vs_sched_qos, KUIDT_INIT(VS_UID), KGIDT_INIT(VS_GID));
+	vs_add_node(vs_sched_qos, "rampup_multiplier_set", VS_RAMPUP_SET, -1);
 
 	pr_info("vendor_sched: %u compatibility nodes created\n", vs_node_count);
 	return 0;
