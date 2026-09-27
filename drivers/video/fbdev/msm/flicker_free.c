@@ -172,6 +172,10 @@ static ssize_t flicker_free_set_dc(struct device *dev,
 	if (kstrtoint(buf, 0, &value))
 		return -EINVAL;
 
+	/* Without the post-processing payloads there is nothing to drive */
+	if (!payload || !dither_payload)
+		return -ENODEV;
+
 	if (!mfd)
 		return count;
 
