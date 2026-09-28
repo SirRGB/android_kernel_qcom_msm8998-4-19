@@ -18,6 +18,9 @@
  * tasks files accept a pid, so a write on a node becomes a write on the
  * matching cgroup file.
  *
+ * uclamp nodes keep the Pixel scale: a read returns exactly the value that was
+ * written, while the cgroup file underneath is given the equivalent percentage.
+ *
  * Nothing here hooks the scheduler. Task grouping is therefore at cgroup
  * granularity, which is also how the AOSP task profiles work, and the
  * uclamp_fork_reset_* pair is accepted and remembered but has no effect,
@@ -54,11 +57,13 @@
 #define VS_SYSTEM_ID		1000
 
 /*
- * cpu.uclamp.min and cpu.uclamp.max are percentages, while the Pixel interface
- * carries the same value on the SCHED_CAPACITY_SCALE scale it uses everywhere
- * else; kernel/sched/core.c converts between the two the same way.
+ * cpu.uclamp.min and cpu.uclamp.max take a percentage, while the Pixel
+ * interface carries uclamp on the 0..SCHED_CAPACITY_SCALE scale, so a write is
+ * converted to the nearest whole percent. A percentage is the only form the
+ * kernel accepts there: capacity_from_percent() (kernel/sched/core.c) turns one
+ * back into the same scale and refuses anything above a full percentage.
  */
-#define VS_PERCENT_SCALE	100
+#define VS_PERCENT		100
 
 /* A group index of -1 stands for the nodes that are not per group. */
 #define VS_GLOBAL_GROUP		(-1)
@@ -200,24 +205,60 @@ static int vs_write_pid(const char *file, char *buf)
 }
 
 /*
- * The cpu controller rejects a value above 100 with -ERANGE, so a value above
- * the percent scale is read as a SCHED_CAPACITY_SCALE one and converted, and
- * anything else already is a percentage and passes through.
+ * The percentage a uclamp value becomes, rounded to the nearest whole percent.
+ * The rounding is checked at init rather than trusted.
  */
-static const char *vs_uclamp_value(char *buf, char *out, size_t len)
+static unsigned long vs_uclamp_percent(unsigned long util)
 {
-	unsigned long raw;
-	char *value = strim(buf);
+	return DIV_ROUND_CLOSEST(util * VS_PERCENT, SCHED_CAPACITY_SCALE);
+}
 
-	if (strcmp(value, "max") && !kstrtoul(value, 10, &raw) &&
-	    raw > VS_PERCENT_SCALE)
-		snprintf(out, len, "%lu",
-			 DIV_ROUND_CLOSEST(raw * VS_PERCENT_SCALE,
-					   SCHED_CAPACITY_SCALE));
-	else
-		strscpy(out, value, len);
+/*
+ * Parse a uclamp node write. The interface carries the value on the
+ * 0..SCHED_CAPACITY_SCALE scale, and "max" is accepted for cpu.uclamp.max the
+ * way the cgroup file itself accepts it. A value above the scale is rejected
+ * instead of being handed to capacity_from_percent(), which refuses anything
+ * above a full percentage with -ERANGE.
+ */
+static int vs_uclamp_value(char *buf, bool is_max, unsigned long *value)
+{
+	char *str = strim(buf);
 
-	return out;
+	if (is_max && !strcmp(str, "max")) {
+		*value = SCHED_CAPACITY_SCALE;
+		return 0;
+	}
+
+	if (kstrtoul(str, 10, value))
+		return -EINVAL;
+	if (*value > SCHED_CAPACITY_SCALE)
+		return -ERANGE;
+
+	return 0;
+}
+
+/*
+ * Nearest whole percent is a rounding contract, not a table: for every value
+ * the scale can carry, the percentage chosen has to be the closest one to it.
+ * Stated as arithmetic - the gap between the chosen percentage and the value,
+ * in units of the scale, stays inside half a percent of that scale - and
+ * warned on, so no value has to be named here.
+ */
+static void vs_uclamp_check(void)
+{
+	unsigned long util;
+
+	for (util = 0; util <= SCHED_CAPACITY_SCALE; util++) {
+		unsigned long percent = vs_uclamp_percent(util);
+		unsigned long scaled = percent * SCHED_CAPACITY_SCALE;
+		unsigned long target = util * VS_PERCENT;
+		unsigned long gap = scaled > target ? scaled - target :
+						     target - scaled;
+
+		WARN_ONCE(2 * gap > SCHED_CAPACITY_SCALE,
+			  "vendor_sched: uclamp %lu is not the nearest percent (%lu)\n",
+			  util, percent);
+	}
 }
 
 static const char *vs_uclamp_attr(enum vs_kind kind)
@@ -239,16 +280,33 @@ static int vs_node_apply(struct vs_node *node, char *buf, size_t count,
 
 	switch (node->kind) {
 	case VS_UCLAMP_MIN:
-	case VS_UCLAMP_MAX:
-		stored = vs_uclamp_value(buf, conv, sizeof(conv));
-		ret = vs_write_attr(node->group, vs_uclamp_attr(node->kind),
-				    stored, strlen(stored));
-		break;
-	case VS_PREFER_IDLE:
+	case VS_UCLAMP_MAX: {
+		unsigned long util;
+
+		ret = vs_uclamp_value(buf, node->kind == VS_UCLAMP_MAX,
+				      &util);
+		if (ret)
+			return ret;
+
+		/* The node reports the capacity value it was given. */
 		stored = buf;
-		ret = vs_write_attr(node->group, "latency_sensitive", buf,
-				    count);
+		snprintf(conv, sizeof(conv), "%lu", vs_uclamp_percent(util));
+		ret = vs_write_attr(node->group, vs_uclamp_attr(node->kind),
+				    conv, strlen(conv));
 		break;
+	}
+	case VS_PREFER_IDLE: {
+		unsigned long idle;
+
+		if (kstrtoul(strim(buf), 10, &idle))
+			return -EINVAL;
+
+		/* cpu.uclamp.latency_sensitive takes a boolean. */
+		stored = idle ? "1" : "0";
+		ret = vs_write_attr(node->group, "latency_sensitive", stored,
+				    strlen(stored));
+		break;
+	}
 	case VS_SET_TASKS:
 		stored = buf;
 		ret = vs_write_pid("tasks", buf);
@@ -433,6 +491,8 @@ static int __init vs_init(void)
 	vs_node_max = ARRAY_SIZE(vs_groups) * ARRAY_SIZE(vs_group_nodes) +
 		      ARRAY_SIZE(vs_global_nodes) +
 		      ARRAY_SIZE(vs_sched_qos_nodes);
+
+	vs_uclamp_check();
 
 	vs_nodes = kcalloc(vs_node_max, sizeof(*vs_nodes), GFP_KERNEL);
 	if (!vs_nodes)
