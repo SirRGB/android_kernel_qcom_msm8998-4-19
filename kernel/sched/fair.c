@@ -3837,6 +3837,7 @@ util_est_dequeue(struct cfs_rq *cfs_rq, struct task_struct *p, bool task_sleep)
 {
 	long last_ewma_diff;
 	struct util_est ue;
+	unsigned int shift;
 	int cpu;
 
 	if (!sched_feat(UTIL_EST))
@@ -3911,9 +3912,19 @@ util_est_dequeue(struct cfs_rq *cfs_rq, struct task_struct *p, bool task_sleep)
 	 * Where 'w' is the weight of new samples, which is configured to be
 	 * 0.25, thus making w=1/4 ( >>= UTIL_EST_WEIGHT_SHIFT)
 	 */
-	ue.ewma <<= UTIL_EST_WEIGHT_SHIFT;
+	/*
+	 * A rampup multiplier above the default selects a heavier EWMA weight
+	 * so a busy task keeps its estimate across sleep gaps. Bound the shift
+	 * so the 32 bit accumulator cannot overflow.
+	 */
+	shift = UTIL_EST_WEIGHT_SHIFT;
+	if (p->rampup_multiplier > shift)
+		shift = min_t(unsigned int, p->rampup_multiplier,
+			      UTIL_EST_WEIGHT_SHIFT + 14);
+
+	ue.ewma <<= shift;
 	ue.ewma  += last_ewma_diff;
-	ue.ewma >>= UTIL_EST_WEIGHT_SHIFT;
+	ue.ewma >>= shift;
 done:
 	WRITE_ONCE(p->se.avg.util_est, ue);
 

@@ -877,6 +877,13 @@ struct task_struct {
 	struct sched_rt_entity		rt;
 	u64				 last_sleep_ts;
 
+	/*
+	 * util_est EWMA shift selected by the vendor_sched rampup multiplier.
+	 * 1 is the default; values above UTIL_EST_WEIGHT_SHIFT slow the decay
+	 * so a bursty task holds its utilization across sleep gaps.
+	 */
+	unsigned int			rampup_multiplier;
+
 	int				boost;
 	u64				boost_period;
 	u64				boost_expires;
