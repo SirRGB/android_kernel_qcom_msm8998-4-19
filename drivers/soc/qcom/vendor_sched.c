@@ -18,6 +18,9 @@
  * tasks files accept a pid, so a write on a node becomes a write on the
  * matching cgroup file.
  *
+ * uclamp nodes keep the Pixel scale: a read returns exactly the value that was
+ * written, while the cgroup file underneath is given the equivalent percentage.
+ *
  * Nothing here hooks the scheduler. Task grouping is therefore at cgroup
  * granularity, which is also how the AOSP task profiles work, and the
  * uclamp_fork_reset_* pair is accepted and remembered but has no effect,
@@ -54,11 +57,15 @@
 #define VS_SYSTEM_ID		1000
 
 /*
- * cpu.uclamp.min and cpu.uclamp.max are percentages, while the Pixel interface
- * carries the same value on the SCHED_CAPACITY_SCALE scale it uses everywhere
- * else; kernel/sched/core.c converts between the two the same way.
+ * cpu.uclamp.min and cpu.uclamp.max take a percentage in fixed point with two
+ * decimals: that is the kernel's own UCLAMP_PERCENT_SCALE (100 * 10^2, see
+ * kernel/sched/core.c) and what cgroup_parse_float() reads back. The Pixel
+ * interface carries uclamp on the 0..SCHED_CAPACITY_SCALE scale instead, so the
+ * value is converted with the inverse of capacity_from_percent(): 410 becomes
+ * "40.04" and the kernel derives util 410 from it again.
  */
 #define VS_PERCENT_SCALE	100
+#define VS_PERCENT_FIXED	(VS_PERCENT_SCALE * 100)
 
 /* A group index of -1 stands for the nodes that are not per group. */
 #define VS_GLOBAL_GROUP		(-1)
@@ -200,24 +207,96 @@ static int vs_write_pid(const char *file, char *buf)
 }
 
 /*
- * The cpu controller rejects a value above 100 with -ERANGE, so a value above
- * the percent scale is read as a SCHED_CAPACITY_SCALE one and converted, and
- * anything else already is a percentage and passes through.
+ * Format a value on the 0..SCHED_CAPACITY_SCALE scale as the fixed point
+ * percentage the cgroup files take, rounding to the nearest hundredth so that
+ * the kernel's capacity_from_percent() derives the same value back and the
+ * node's read-back round-trips.
  */
-static const char *vs_uclamp_value(char *buf, char *out, size_t len)
+static void vs_uclamp_percent(unsigned long value, char *out, size_t len)
 {
-	unsigned long raw;
-	char *value = strim(buf);
+	unsigned long fixed = DIV_ROUND_CLOSEST(value * VS_PERCENT_FIXED,
+						SCHED_CAPACITY_SCALE);
 
-	if (strcmp(value, "max") && !kstrtoul(value, 10, &raw) &&
-	    raw > VS_PERCENT_SCALE)
-		snprintf(out, len, "%lu",
-			 DIV_ROUND_CLOSEST(raw * VS_PERCENT_SCALE,
-					   SCHED_CAPACITY_SCALE));
-	else
-		strscpy(out, value, len);
+	snprintf(out, len, "%lu.%02lu", fixed / VS_PERCENT_SCALE,
+		 fixed % VS_PERCENT_SCALE);
+}
 
-	return out;
+/*
+ * Parse a uclamp node write. The interface carries the value on the
+ * 0..SCHED_CAPACITY_SCALE scale, and "max" is accepted for cpu.uclamp.max the
+ * way the cgroup file itself accepts it. A value above the scale is rejected
+ * instead of being handed to capacity_from_percent(), which refuses anything
+ * above a full percentage with -ERANGE.
+ */
+static int vs_uclamp_value(char *buf, bool is_max, unsigned long *value)
+{
+	char *str = strim(buf);
+
+	if (is_max && !strcmp(str, "max")) {
+		*value = SCHED_CAPACITY_SCALE;
+		return 0;
+	}
+
+	if (kstrtoul(str, 10, value))
+		return -EINVAL;
+	if (*value > SCHED_CAPACITY_SCALE)
+		return -ERANGE;
+
+	return 0;
+}
+
+/*
+ * The conversion has to round-trip, or the powerhint ladder silently lands at
+ * the wrong utilization. Walk the boundaries at init so a regression is loud.
+ */
+static const struct {
+	unsigned long util;
+	const char *percent;
+} vs_uclamp_bounds[] = {
+	{ 0,	"0.00" },
+	{ 1,	"0.10" },
+	{ 40,	"3.91" },
+	{ 80,	"7.81" },
+	{ 100,	"9.77" },
+	{ 101,	"9.86" },
+	{ 308,	"30.08" },
+	{ 410,	"40.04" },
+	{ 512,	"50.00" },
+	{ 1024,	"100.00" },
+};
+
+static unsigned long vs_percent_util(const char *percent)
+{
+	unsigned long whole = 0;
+	unsigned long frac = 0;
+	unsigned long fixed;
+
+	if (sscanf(percent, "%lu.%02lu", &whole, &frac) != 2)
+		return SCHED_CAPACITY_SCALE + 1;
+
+	fixed = whole * VS_PERCENT_SCALE + frac;
+
+	return DIV_ROUND_CLOSEST(fixed * SCHED_CAPACITY_SCALE,
+				 VS_PERCENT_FIXED);
+}
+
+static void vs_uclamp_check(void)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(vs_uclamp_bounds); i++) {
+		char percent[VS_MAX_VALUE];
+		unsigned long util;
+
+		vs_uclamp_percent(vs_uclamp_bounds[i].util, percent,
+				  sizeof(percent));
+		util = vs_percent_util(percent);
+
+		WARN_ONCE(strcmp(percent, vs_uclamp_bounds[i].percent) ||
+			  util != vs_uclamp_bounds[i].util,
+			  "vendor_sched: uclamp %lu converts to %s, back to %lu\n",
+			  vs_uclamp_bounds[i].util, percent, util);
+	}
 }
 
 static const char *vs_uclamp_attr(enum vs_kind kind)
@@ -239,16 +318,32 @@ static int vs_node_apply(struct vs_node *node, char *buf, size_t count,
 
 	switch (node->kind) {
 	case VS_UCLAMP_MIN:
-	case VS_UCLAMP_MAX:
-		stored = vs_uclamp_value(buf, conv, sizeof(conv));
-		ret = vs_write_attr(node->group, vs_uclamp_attr(node->kind),
-				    stored, strlen(stored));
-		break;
-	case VS_PREFER_IDLE:
+	case VS_UCLAMP_MAX: {
+		unsigned long util;
+
+		ret = vs_uclamp_value(buf, node->kind == VS_UCLAMP_MAX,
+				      &util);
+		if (ret)
+			return ret;
+
+		/* The node reports the capacity value it was given. */
 		stored = buf;
-		ret = vs_write_attr(node->group, "latency_sensitive", buf,
-				    count);
+		vs_uclamp_percent(util, conv, sizeof(conv));
+		ret = vs_write_attr(node->group, vs_uclamp_attr(node->kind),
+				    conv, strlen(conv));
 		break;
+	}
+	case VS_PREFER_IDLE: {
+		unsigned long idle;
+
+		if (kstrtoul(strim(buf), 10, &idle) || idle > 1)
+			return -EINVAL;
+
+		stored = idle ? "1" : "0";
+		ret = vs_write_attr(node->group, "latency_sensitive", stored,
+				    strlen(stored));
+		break;
+	}
 	case VS_SET_TASKS:
 		stored = buf;
 		ret = vs_write_pid("tasks", buf);
@@ -433,6 +528,8 @@ static int __init vs_init(void)
 	vs_node_max = ARRAY_SIZE(vs_groups) * ARRAY_SIZE(vs_group_nodes) +
 		      ARRAY_SIZE(vs_global_nodes) +
 		      ARRAY_SIZE(vs_sched_qos_nodes);
+
+	vs_uclamp_check();
 
 	vs_nodes = kcalloc(vs_node_max, sizeof(*vs_nodes), GFP_KERNEL);
 	if (!vs_nodes)
