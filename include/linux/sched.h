@@ -767,6 +767,19 @@ struct sched_dl_entity {
 /* Number of utilization clamp buckets (shorter alias) */
 #define UCLAMP_BUCKETS CONFIG_UCLAMP_BUCKETS_COUNT
 
+/* Integer 10^N from the literal 1eN; a macro cannot paste N on its own. */
+#define _SCHED_POW10(exp)	((unsigned int)1e##exp)
+#define SCHED_POW10(exp)	_SCHED_POW10(exp)
+
+/*
+ * The utilization clamp cgroup interface carries a percentage in fixed point
+ * with UCLAMP_PERCENT_SHIFT decimals, where UCLAMP_PERCENT_SCALE stands for 100
+ * percent. Defined here rather than in the scheduler so that a driver
+ * translating the same interface uses the very same scale.
+ */
+#define UCLAMP_PERCENT_SHIFT	2
+#define UCLAMP_PERCENT_SCALE	(100 * SCHED_POW10(UCLAMP_PERCENT_SHIFT))
+
 /*
  * Utilization clamp for a scheduling entity
  * @value:		clamp value "assigned" to a se

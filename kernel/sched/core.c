@@ -7948,16 +7948,11 @@ static void cpu_util_update_eff(struct cgroup_subsys_state *css)
 }
 
 /*
- * Integer 10^N with a given N exponent by casting to integer the literal "1eN"
- * C expression. Since there is no way to convert a macro argument (N) into a
- * character constant, use two levels of macros.
+ * The percent scale used below is defined in linux/sched.h, together with the
+ * SCHED_POW10() helper, so that drivers translating this same cgroup interface
+ * share one definition of it.
  */
-#define _POW10(exp) ((unsigned int)1e##exp)
-#define POW10(exp) _POW10(exp)
-
 struct uclamp_request {
-#define UCLAMP_PERCENT_SHIFT	2
-#define UCLAMP_PERCENT_SCALE	(100 * POW10(UCLAMP_PERCENT_SHIFT))
 	s64 percent;
 	u64 util;
 	int ret;
@@ -8058,7 +8053,7 @@ static inline void cpu_uclamp_print(struct seq_file *sf,
 	}
 
 	percent = tg->uclamp_pct[clamp_id];
-	percent = div_u64_rem(percent, POW10(UCLAMP_PERCENT_SHIFT), &rem);
+	percent = div_u64_rem(percent, SCHED_POW10(UCLAMP_PERCENT_SHIFT), &rem);
 	seq_printf(sf, "%llu.%0*u\n", percent, UCLAMP_PERCENT_SHIFT, rem);
 }
 

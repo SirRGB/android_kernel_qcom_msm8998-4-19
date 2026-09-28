@@ -28,9 +28,11 @@
  * value written so configuration tools observe their own writes succeed.
  */
 
+#include <linux/cgroup.h>
 #include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/math64.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/proc_fs.h>
@@ -57,15 +59,11 @@
 #define VS_SYSTEM_ID		1000
 
 /*
- * cpu.uclamp.min and cpu.uclamp.max take a percentage in fixed point with two
- * decimals: that is the kernel's own UCLAMP_PERCENT_SCALE (100 * 10^2, see
- * kernel/sched/core.c) and what cgroup_parse_float() reads back. The Pixel
- * interface carries uclamp on the 0..SCHED_CAPACITY_SCALE scale instead, so the
- * value is converted with the inverse of capacity_from_percent(): 410 becomes
- * "40.04" and the kernel derives util 410 from it again.
+ * The Pixel interface carries uclamp on the 0..SCHED_CAPACITY_SCALE scale,
+ * while the cgroup files take the percentage described by UCLAMP_PERCENT_SHIFT
+ * and UCLAMP_PERCENT_SCALE (linux/sched.h). A write is therefore converted with
+ * the inverse of the kernel's capacity_from_percent().
  */
-#define VS_PERCENT_SCALE	100
-#define VS_PERCENT_FIXED	(VS_PERCENT_SCALE * 100)
 
 /* A group index of -1 stands for the nodes that are not per group. */
 #define VS_GLOBAL_GROUP		(-1)
@@ -207,18 +205,22 @@ static int vs_write_pid(const char *file, char *buf)
 }
 
 /*
- * Format a value on the 0..SCHED_CAPACITY_SCALE scale as the fixed point
- * percentage the cgroup files take, rounding to the nearest hundredth so that
- * the kernel's capacity_from_percent() derives the same value back and the
- * node's read-back round-trips.
+ * capacity_from_percent() in kernel/sched/core.c turns the percentage the
+ * cgroup files take into a capacity value, and cpu_uclamp_print() formats that
+ * percentage again. Both are inverted here with the same definitions: the value
+ * is scaled into UCLAMP_PERCENT_SCALE, divided by the capacity scale, and
+ * printed with UCLAMP_PERCENT_SHIFT decimals, so what the kernel derives from
+ * this driver's write is the value that was asked for.
  */
-static void vs_uclamp_percent(unsigned long value, char *out, size_t len)
+static void vs_uclamp_percent(unsigned long util, char *out, size_t len)
 {
-	unsigned long fixed = DIV_ROUND_CLOSEST(value * VS_PERCENT_FIXED,
-						SCHED_CAPACITY_SCALE);
+	u64 percent = (u64)util * UCLAMP_PERCENT_SCALE;
+	u64 whole;
+	u32 rem;
 
-	snprintf(out, len, "%lu.%02lu", fixed / VS_PERCENT_SCALE,
-		 fixed % VS_PERCENT_SCALE);
+	percent = DIV_ROUND_CLOSEST_ULL(percent, SCHED_CAPACITY_SCALE);
+	whole = div_u64_rem(percent, SCHED_POW10(UCLAMP_PERCENT_SHIFT), &rem);
+	snprintf(out, len, "%llu.%0*u", whole, UCLAMP_PERCENT_SHIFT, rem);
 }
 
 /*
@@ -246,38 +248,27 @@ static int vs_uclamp_value(char *buf, bool is_max, unsigned long *value)
 }
 
 /*
- * The conversion has to round-trip, or the powerhint ladder silently lands at
- * the wrong utilization. Walk the boundaries at init so a regression is loud.
+ * What the kernel makes of a write has to give back the value that was asked
+ * for, or the powerhint ladder quietly lands somewhere else. Walk the ladder's
+ * boundaries at init, deriving both directions instead of comparing against
+ * expected strings, and warn if any value fails to survive the round trip.
  */
-static const struct {
-	unsigned long util;
-	const char *percent;
-} vs_uclamp_bounds[] = {
-	{ 0,	"0.00" },
-	{ 1,	"0.10" },
-	{ 40,	"3.91" },
-	{ 80,	"7.81" },
-	{ 100,	"9.77" },
-	{ 101,	"9.86" },
-	{ 308,	"30.08" },
-	{ 410,	"40.04" },
-	{ 512,	"50.00" },
-	{ 1024,	"100.00" },
+static const unsigned long vs_uclamp_bounds[] = {
+	0, 1, 40, 80, 100, 101, 308, 410, 512, 1024,
 };
 
-static unsigned long vs_percent_util(const char *percent)
+/* capacity_from_percent(), applied the way kernel/sched/core.c applies it. */
+static unsigned long vs_percent_util(char *percent)
 {
-	unsigned long whole = 0;
-	unsigned long frac = 0;
-	unsigned long fixed;
+	s64 fixed = 0;
 
-	if (sscanf(percent, "%lu.%02lu", &whole, &frac) != 2)
+	if (cgroup_parse_float(percent, UCLAMP_PERCENT_SHIFT, &fixed))
+		return SCHED_CAPACITY_SCALE + 1;
+	if (fixed < 0 || (u64)fixed > UCLAMP_PERCENT_SCALE)
 		return SCHED_CAPACITY_SCALE + 1;
 
-	fixed = whole * VS_PERCENT_SCALE + frac;
-
-	return DIV_ROUND_CLOSEST(fixed * SCHED_CAPACITY_SCALE,
-				 VS_PERCENT_FIXED);
+	return DIV_ROUND_CLOSEST_ULL((u64)fixed << SCHED_CAPACITY_SHIFT,
+				     UCLAMP_PERCENT_SCALE);
 }
 
 static void vs_uclamp_check(void)
@@ -285,17 +276,13 @@ static void vs_uclamp_check(void)
 	unsigned int i;
 
 	for (i = 0; i < ARRAY_SIZE(vs_uclamp_bounds); i++) {
+		unsigned long util = vs_uclamp_bounds[i];
 		char percent[VS_MAX_VALUE];
-		unsigned long util;
 
-		vs_uclamp_percent(vs_uclamp_bounds[i].util, percent,
-				  sizeof(percent));
-		util = vs_percent_util(percent);
-
-		WARN_ONCE(strcmp(percent, vs_uclamp_bounds[i].percent) ||
-			  util != vs_uclamp_bounds[i].util,
-			  "vendor_sched: uclamp %lu converts to %s, back to %lu\n",
-			  vs_uclamp_bounds[i].util, percent, util);
+		vs_uclamp_percent(util, percent, sizeof(percent));
+		WARN_ONCE(vs_percent_util(percent) != util,
+			  "vendor_sched: uclamp %lu does not survive %s\n",
+			  util, percent);
 	}
 }
 
