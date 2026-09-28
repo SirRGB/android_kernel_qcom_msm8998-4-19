@@ -18,6 +18,9 @@
  * tasks files accept a pid, so a write on a node becomes a write on the
  * matching cgroup file.
  *
+ * uclamp nodes keep the Pixel scale: a read returns exactly the value that was
+ * written, while the cgroup file underneath is given the equivalent percentage.
+ *
  * Nothing here hooks the scheduler. Task grouping is therefore at cgroup
  * granularity, which is also how the AOSP task profiles work, and the
  * uclamp_fork_reset_* pair is accepted and remembered but has no effect,
@@ -25,6 +28,7 @@
  * value written so configuration tools observe their own writes succeed.
  */
 
+#include <linux/cgroup.h>
 #include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -47,18 +51,22 @@
 #define VS_MAX_PATH		128
 
 /*
+ * cpu.uclamp.min and cpu.uclamp.max take a percentage in fixed point with
+ * VS_PERCENT_DIGITS decimals, where VS_PERCENT_SCALE is 100 percent. The Pixel
+ * interface carries uclamp on the 0..SCHED_CAPACITY_SCALE scale instead, so a
+ * write is converted at the resolution the file itself has.
+ */
+#define VS_PERCENT		100
+#define VS_PERCENT_DIGITS	2
+#define VS_PERCENT_STEP		100
+#define VS_PERCENT_SCALE	(VS_PERCENT * VS_PERCENT_STEP)
+
+/*
  * The nodes are writable by their owner and its group, which is the system uid
  * the power HAL runs as. Init runs as root and does not need the mode relaxed.
  */
 #define VS_MODE			0220
 #define VS_SYSTEM_ID		1000
-
-/*
- * cpu.uclamp.min and cpu.uclamp.max are percentages, while the Pixel interface
- * carries the same value on the SCHED_CAPACITY_SCALE scale it uses everywhere
- * else; kernel/sched/core.c converts between the two the same way.
- */
-#define VS_PERCENT_SCALE	100
 
 /* A group index of -1 stands for the nodes that are not per group. */
 #define VS_GLOBAL_GROUP		(-1)
@@ -200,29 +208,80 @@ static int vs_write_pid(const char *file, char *buf)
 }
 
 /*
- * The cpu controller rejects a value above 100 with -ERANGE, so a value above
- * the percent scale is read as a SCHED_CAPACITY_SCALE one and converted, and
- * anything else already is a percentage and passes through.
+ * Parse a uclamp node write. The interface carries the value on the
+ * 0..SCHED_CAPACITY_SCALE scale, and "max" is accepted for cpu.uclamp.max the
+ * way the cgroup file itself accepts it. A value above the scale is rejected
+ * instead of being handed to capacity_from_percent(), which refuses anything
+ * above a full percentage with -ERANGE.
  */
-static const char *vs_uclamp_value(char *buf, char *out, size_t len)
+static int vs_uclamp_value(char *buf, bool is_max, unsigned long *value)
 {
-	unsigned long raw;
-	char *value = strim(buf);
+	char *str = strim(buf);
 
-	if (strcmp(value, "max") && !kstrtoul(value, 10, &raw) &&
-	    raw > VS_PERCENT_SCALE)
-		snprintf(out, len, "%lu",
-			 DIV_ROUND_CLOSEST(raw * VS_PERCENT_SCALE,
-					   SCHED_CAPACITY_SCALE));
-	else
-		strscpy(out, value, len);
+	if (is_max && !strcmp(str, "max")) {
+		*value = SCHED_CAPACITY_SCALE;
+		return 0;
+	}
 
-	return out;
+	if (kstrtoul(str, 10, value))
+		return -EINVAL;
+	if (*value > SCHED_CAPACITY_SCALE)
+		return -ERANGE;
+
+	return 0;
+}
+
+/*
+ * The percentage equivalent to a capacity value, at the resolution the cgroup
+ * file has. Nothing is lost: the kernel derives the same capacity value back,
+ * which is what vs_uclamp_check() proves.
+ */
+static void vs_uclamp_percent(unsigned long util, char *out, size_t len)
+{
+	unsigned long fixed = DIV_ROUND_CLOSEST_ULL((u64)util * VS_PERCENT_SCALE,
+						    SCHED_CAPACITY_SCALE);
+
+	snprintf(out, len, "%lu.%0*lu", fixed / VS_PERCENT_STEP,
+		 VS_PERCENT_DIGITS, fixed % VS_PERCENT_STEP);
 }
 
 static const char *vs_uclamp_attr(enum vs_kind kind)
 {
 	return kind == VS_UCLAMP_MIN ? "min" : "max";
+}
+
+/*
+ * What the kernel makes of a write has to be the value that was asked for. This
+ * feeds the percentage back through the kernel's own parser for that file and
+ * the arithmetic its writer applies, so a change in either shows up here rather
+ * than silently reshaping the ladder; and the check walks the whole scale, so no
+ * value has to be named.
+ */
+static unsigned long vs_percent_util(char *percent)
+{
+	s64 fixed = 0;
+
+	if (cgroup_parse_float(percent, VS_PERCENT_DIGITS, &fixed))
+		return SCHED_CAPACITY_SCALE + 1;
+	if (fixed < 0 || (u64)fixed > VS_PERCENT_SCALE)
+		return SCHED_CAPACITY_SCALE + 1;
+
+	return DIV_ROUND_CLOSEST_ULL((u64)fixed * SCHED_CAPACITY_SCALE,
+				     VS_PERCENT_SCALE);
+}
+
+static void vs_uclamp_check(void)
+{
+	unsigned long util;
+
+	for (util = 0; util <= SCHED_CAPACITY_SCALE; util++) {
+		char percent[VS_MAX_VALUE];
+
+		vs_uclamp_percent(util, percent, sizeof(percent));
+		WARN_ONCE(vs_percent_util(percent) != util,
+			  "vendor_sched: uclamp %lu does not survive %s\n",
+			  util, percent);
+	}
 }
 
 /*
@@ -233,22 +292,39 @@ static const char *vs_uclamp_attr(enum vs_kind kind)
 static int vs_node_apply(struct vs_node *node, char *buf, size_t count,
 			 char *value, size_t len)
 {
-	char conv[VS_MAX_VALUE];
 	const char *stored;
 	int ret;
 
 	switch (node->kind) {
 	case VS_UCLAMP_MIN:
-	case VS_UCLAMP_MAX:
-		stored = vs_uclamp_value(buf, conv, sizeof(conv));
-		ret = vs_write_attr(node->group, vs_uclamp_attr(node->kind),
-				    stored, strlen(stored));
-		break;
-	case VS_PREFER_IDLE:
+	case VS_UCLAMP_MAX: {
+		unsigned long util;
+		char conv[VS_MAX_VALUE];
+
+		ret = vs_uclamp_value(buf, node->kind == VS_UCLAMP_MAX,
+				      &util);
+		if (ret)
+			return ret;
+
+		/* The node reports the capacity value it was given. */
 		stored = buf;
-		ret = vs_write_attr(node->group, "latency_sensitive", buf,
-				    count);
+		vs_uclamp_percent(util, conv, sizeof(conv));
+		ret = vs_write_attr(node->group, vs_uclamp_attr(node->kind),
+				    conv, strlen(conv));
 		break;
+	}
+	case VS_PREFER_IDLE: {
+		unsigned long idle;
+
+		if (kstrtoul(strim(buf), 10, &idle))
+			return -EINVAL;
+
+		/* cpu.uclamp.latency_sensitive takes a boolean. */
+		stored = idle ? "1" : "0";
+		ret = vs_write_attr(node->group, "latency_sensitive", stored,
+				    strlen(stored));
+		break;
+	}
 	case VS_SET_TASKS:
 		stored = buf;
 		ret = vs_write_pid("tasks", buf);
@@ -433,6 +509,8 @@ static int __init vs_init(void)
 	vs_node_max = ARRAY_SIZE(vs_groups) * ARRAY_SIZE(vs_group_nodes) +
 		      ARRAY_SIZE(vs_global_nodes) +
 		      ARRAY_SIZE(vs_sched_qos_nodes);
+
+	vs_uclamp_check();
 
 	vs_nodes = kcalloc(vs_node_max, sizeof(*vs_nodes), GFP_KERNEL);
 	if (!vs_nodes)
