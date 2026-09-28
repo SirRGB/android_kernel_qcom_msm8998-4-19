@@ -36,6 +36,7 @@
 #include <linux/proc_fs.h>
 #include <linux/sched.h>
 #include <linux/sched/task.h>
+#include <linux/sched/uclamp.h>
 #include <linux/slab.h>
 #include <linux/stat.h>
 #include <linux/string.h>
@@ -55,15 +56,6 @@
  */
 #define VS_MODE			0220
 #define VS_SYSTEM_ID		1000
-
-/*
- * cpu.uclamp.min and cpu.uclamp.max take a percentage, while the Pixel
- * interface carries uclamp on the 0..SCHED_CAPACITY_SCALE scale, so a write is
- * converted to the nearest whole percent. A percentage is the only form the
- * kernel accepts there: capacity_from_percent() (kernel/sched/core.c) turns one
- * back into the same scale and refuses anything above a full percentage.
- */
-#define VS_PERCENT		100
 
 /* A group index of -1 stands for the nodes that are not per group. */
 #define VS_GLOBAL_GROUP		(-1)
@@ -205,15 +197,6 @@ static int vs_write_pid(const char *file, char *buf)
 }
 
 /*
- * The percentage a uclamp value becomes, rounded to the nearest whole percent.
- * The rounding is checked at init rather than trusted.
- */
-static unsigned long vs_uclamp_percent(unsigned long util)
-{
-	return DIV_ROUND_CLOSEST(util * VS_PERCENT, SCHED_CAPACITY_SCALE);
-}
-
-/*
  * Parse a uclamp node write. The interface carries the value on the
  * 0..SCHED_CAPACITY_SCALE scale, and "max" is accepted for cpu.uclamp.max the
  * way the cgroup file itself accepts it. A value above the scale is rejected
@@ -237,33 +220,35 @@ static int vs_uclamp_value(char *buf, bool is_max, unsigned long *value)
 	return 0;
 }
 
-/*
- * Nearest whole percent is a rounding contract, not a table: for every value
- * the scale can carry, the percentage chosen has to be the closest one to it.
- * Stated as arithmetic - the gap between the chosen percentage and the value,
- * in units of the scale, stays inside half a percent of that scale - and
- * warned on, so no value has to be named here.
- */
-static void vs_uclamp_check(void)
+static enum uclamp_id vs_uclamp_id(enum vs_kind kind)
 {
-	unsigned long util;
-
-	for (util = 0; util <= SCHED_CAPACITY_SCALE; util++) {
-		unsigned long percent = vs_uclamp_percent(util);
-		unsigned long scaled = percent * SCHED_CAPACITY_SCALE;
-		unsigned long target = util * VS_PERCENT;
-		unsigned long gap = scaled > target ? scaled - target :
-						     target - scaled;
-
-		WARN_ONCE(2 * gap > SCHED_CAPACITY_SCALE,
-			  "vendor_sched: uclamp %lu is not the nearest percent (%lu)\n",
-			  util, percent);
-	}
+	return kind == VS_UCLAMP_MIN ? UCLAMP_MIN : UCLAMP_MAX;
 }
 
-static const char *vs_uclamp_attr(enum vs_kind kind)
+/*
+ * Apply a clamp to one of the cpuctl groups. The scheduler is handed the value
+ * on the capacity scale it stores, so no percentage is built here: the writers
+ * behind cpu.uclamp.min and cpu.uclamp.max are called with the group directory
+ * and the value as it came in.
+ */
+static int vs_write_uclamp(int group, enum uclamp_id clamp_id,
+			   unsigned long util)
 {
-	return kind == VS_UCLAMP_MIN ? "min" : "max";
+	char path[VS_MAX_PATH];
+	struct file *dir;
+	int ret;
+
+	snprintf(path, sizeof(path), "%s/%s", VS_CPUCTL_ROOT,
+		 vs_groups[group].cpuctl);
+
+	dir = filp_open(path, O_RDONLY | O_DIRECTORY, 0);
+	if (IS_ERR(dir))
+		return PTR_ERR(dir);
+
+	ret = sched_uclamp_set_dir(dir->f_path.dentry, clamp_id, util);
+	filp_close(dir, NULL);
+
+	return ret;
 }
 
 /*
@@ -274,7 +259,6 @@ static const char *vs_uclamp_attr(enum vs_kind kind)
 static int vs_node_apply(struct vs_node *node, char *buf, size_t count,
 			 char *value, size_t len)
 {
-	char conv[VS_MAX_VALUE];
 	const char *stored;
 	int ret;
 
@@ -290,9 +274,8 @@ static int vs_node_apply(struct vs_node *node, char *buf, size_t count,
 
 		/* The node reports the capacity value it was given. */
 		stored = buf;
-		snprintf(conv, sizeof(conv), "%lu", vs_uclamp_percent(util));
-		ret = vs_write_attr(node->group, vs_uclamp_attr(node->kind),
-				    conv, strlen(conv));
+		ret = vs_write_uclamp(node->group, vs_uclamp_id(node->kind),
+				      util);
 		break;
 	}
 	case VS_PREFER_IDLE: {
@@ -491,8 +474,6 @@ static int __init vs_init(void)
 	vs_node_max = ARRAY_SIZE(vs_groups) * ARRAY_SIZE(vs_group_nodes) +
 		      ARRAY_SIZE(vs_global_nodes) +
 		      ARRAY_SIZE(vs_sched_qos_nodes);
-
-	vs_uclamp_check();
 
 	vs_nodes = kcalloc(vs_node_max, sizeof(*vs_nodes), GFP_KERNEL);
 	if (!vs_nodes)

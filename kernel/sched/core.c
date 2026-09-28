@@ -8,6 +8,7 @@
 #include "sched.h"
 
 #include <linux/nospec.h>
+#include <linux/sched/uclamp.h>
 
 #include <linux/kcov.h>
 #include <linux/irq.h>
@@ -7989,6 +7990,67 @@ capacity_from_percent(char *buf)
 
 	return req;
 }
+
+/*
+ * Store a clamp the scheduler already holds on the capacity scale: the same two
+ * writers cpu_uclamp_write() calls once it has converted the percentage the
+ * file interface takes, without the percentage bookkeeping that belongs to
+ * that interface.
+ */
+static void uclamp_set_group(struct cgroup_subsys_state *css,
+			     enum uclamp_id clamp_id, unsigned int util)
+{
+	struct task_group *tg;
+
+	static_branch_enable(&sched_uclamp_used);
+
+	mutex_lock(&uclamp_mutex);
+	rcu_read_lock();
+
+	tg = css_tg(css);
+	if (tg->uclamp_req[clamp_id].value != util)
+		uclamp_se_set(&tg->uclamp_req[clamp_id], util, false);
+
+	/* Update effective clamps to track the most restrictive value */
+	cpu_util_update_eff(css);
+
+	rcu_read_unlock();
+	mutex_unlock(&uclamp_mutex);
+}
+
+/**
+ * sched_uclamp_set_dir - request a clamp for the cpu cgroup of a directory
+ * @dir: a cgroup directory, such as /dev/cpuctl/top-app
+ * @clamp_id: UCLAMP_MIN or UCLAMP_MAX
+ * @util: the clamp, on the 0..SCHED_CAPACITY_SCALE scale the scheduler stores
+ *
+ * cpu.uclamp.min and cpu.uclamp.max convert a percentage before handing the
+ * value to the scheduler, so a caller that already holds the value on the
+ * capacity scale does not have to encode and decode it: this takes the same
+ * writer path with the value as it is.
+ *
+ * Return: 0 on success, -ERANGE if @util is above SCHED_CAPACITY_SCALE, or the
+ * error from resolving @dir as the directory of a cpu cgroup.
+ */
+int sched_uclamp_set_dir(struct dentry *dir, enum uclamp_id clamp_id,
+			 unsigned int util)
+{
+	struct cgroup_subsys_state *css;
+
+	if (util > SCHED_CAPACITY_SCALE)
+		return -ERANGE;
+
+	css = css_tryget_online_from_dir(dir, &cpu_cgrp_subsys);
+	if (IS_ERR(css))
+		return PTR_ERR(css);
+
+	uclamp_set_group(css, clamp_id, util);
+
+	css_put(css);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(sched_uclamp_set_dir);
 
 static ssize_t cpu_uclamp_write(struct kernfs_open_file *of, char *buf,
 				size_t nbytes, loff_t off,
