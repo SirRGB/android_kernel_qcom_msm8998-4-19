@@ -249,15 +249,11 @@ static int vs_uclamp_value(char *buf, bool is_max, unsigned long *value)
 
 /*
  * What the kernel makes of a write has to give back the value that was asked
- * for, or the powerhint ladder quietly lands somewhere else. Walk the ladder's
- * boundaries at init, deriving both directions instead of comparing against
- * expected strings, and warn if any value fails to survive the round trip.
+ * for, or the powerhint ladder quietly lands somewhere else. Every value the
+ * scale can carry is derived both ways at init - formatted and then read back
+ * with the kernel's own parser and arithmetic - so nothing here needs to name a
+ * value, and any that fails to survive is reported.
  */
-static const unsigned long vs_uclamp_bounds[] = {
-	0, 1, 40, 80, 100, 101, 308, 410, 512, 1024,
-};
-
-/* capacity_from_percent(), applied the way kernel/sched/core.c applies it. */
 static unsigned long vs_percent_util(char *percent)
 {
 	s64 fixed = 0;
@@ -273,10 +269,9 @@ static unsigned long vs_percent_util(char *percent)
 
 static void vs_uclamp_check(void)
 {
-	unsigned int i;
+	unsigned long util;
 
-	for (i = 0; i < ARRAY_SIZE(vs_uclamp_bounds); i++) {
-		unsigned long util = vs_uclamp_bounds[i];
+	for (util = 0; util <= SCHED_CAPACITY_SCALE; util++) {
 		char percent[VS_MAX_VALUE];
 
 		vs_uclamp_percent(util, percent, sizeof(percent));
@@ -323,9 +318,10 @@ static int vs_node_apply(struct vs_node *node, char *buf, size_t count,
 	case VS_PREFER_IDLE: {
 		unsigned long idle;
 
-		if (kstrtoul(strim(buf), 10, &idle) || idle > 1)
+		if (kstrtoul(strim(buf), 10, &idle))
 			return -EINVAL;
 
+		/* cpu.uclamp.latency_sensitive takes a boolean. */
 		stored = idle ? "1" : "0";
 		ret = vs_write_attr(node->group, "latency_sensitive", stored,
 				    strlen(stored));
