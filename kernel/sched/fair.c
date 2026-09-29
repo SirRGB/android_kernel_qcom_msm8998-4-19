@@ -3841,18 +3841,29 @@ static inline bool within_margin(int value, int margin)
 /*
  * The global default must not boost background work, so it only applies to a
  * task running at a raised uclamp.min; every other task keeps the plain PELT
- * rampup and its throughput and power are untouched. An explicit per-task
- * setting is used as-is, and 0 and 1 keep their global meaning: 0 disables
- * util_est for every task and 1 is the normal behavior.
+ * rampup and its throughput and power are untouched. 0 and 1 keep their global
+ * meaning: 0 disables util_est for every task and 1 is the normal behavior.
  */
 static unsigned int task_rampup_multiplier(struct task_struct *p)
 {
+	unsigned int mult = READ_ONCE(p->rampup_multiplier);
 #ifdef CONFIG_UCLAMP_TASK
-	if (!p->rampup_multiplier_set && p->rampup_multiplier > 1 &&
-	    !uclamp_eff_value(p, UCLAMP_MIN))
-		return 1;
+	unsigned int global = READ_ONCE(sysctl_sched_rampup_multiplier);
+	bool boosted = uclamp_eff_value(p, UCLAMP_MIN) != 0;
+
+	/*
+	 * Background work keeps the plain PELT rampup whatever the per-task
+	 * node holds, so a value left behind by a paused or ended session
+	 * cannot outlive it. A boosted task may raise above the sysctl value,
+	 * but not fall below it.
+	 */
+	if (!boosted)
+		return mult > 1 ? 1 : mult;
+
+	if (mult < global)
+		return global;
 #endif
-	return p->rampup_multiplier;
+	return mult;
 }
 
 static inline void util_est_dequeue(struct cfs_rq *cfs_rq,
