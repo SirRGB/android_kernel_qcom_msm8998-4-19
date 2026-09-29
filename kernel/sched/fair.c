@@ -3841,13 +3841,24 @@ static inline bool within_margin(int value, int margin)
 /*
  * The global default must not boost background work, so it only applies to a
  * task running at a raised uclamp.min; every other task keeps the plain PELT
- * rampup and its throughput and power are untouched. An explicit per-task
- * setting is used as-is, and 0 and 1 keep their global meaning: 0 disables
- * util_est for every task and 1 is the normal behavior.
+ * rampup and its throughput and power are untouched. 0 and 1 keep their global
+ * meaning: 0 disables util_est for every task and 1 is the normal behavior.
+ *
+ * An explicit per-task setting may raise the multiplier above the global, but
+ * not below it: userspace writes both a boost and its own default through the
+ * same node, and the default write also marks the task as explicitly set, so a
+ * boosted task would otherwise keep the low value for the rest of its life. The
+ * floor applies only where the global does, so a per-task 0 still disables
+ * util_est for a task the global leaves alone.
  */
 static unsigned int task_rampup_multiplier(struct task_struct *p)
 {
 #ifdef CONFIG_UCLAMP_TASK
+	if (p->rampup_multiplier_set &&
+	    p->rampup_multiplier < READ_ONCE(sysctl_sched_rampup_multiplier) &&
+	    uclamp_eff_value(p, UCLAMP_MIN))
+		return READ_ONCE(sysctl_sched_rampup_multiplier);
+
 	if (!p->rampup_multiplier_set && p->rampup_multiplier > 1 &&
 	    !uclamp_eff_value(p, UCLAMP_MIN))
 		return 1;
