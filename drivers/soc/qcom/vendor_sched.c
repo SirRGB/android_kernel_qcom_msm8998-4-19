@@ -7,6 +7,8 @@
  * Provide the subset of nodes Pixel userspace writes and translate each write
  * onto an existing cpu cgroup file: cpu.uclamp.min, cpu.uclamp.max and
  * cpu.uclamp.latency_sensitive, and cgroup.procs and tasks for group nodes.
+ * The sched_qos session nodes set one task's uclamp.min through sched_setattr,
+ * so a session profile clamps its own threads instead of a whole group.
  *
  * Copyright (c) 2026, Edrick Sinsuan <evcsinsuan@gmail.com>
  */
@@ -28,6 +30,7 @@
 #include <linux/string.h>
 #include <linux/uidgid.h>
 #include <linux/uaccess.h>
+#include <uapi/linux/sched/types.h>
 
 #define VS_CPUCTL_ROOT		"/dev/cpuctl"
 #define VS_PROC_DIR		"vendor_sched"
@@ -36,6 +39,15 @@
 #define VS_MAX_NAME		64
 #define VS_MAX_PATH		128
 #define VS_RAMPUP_MAX		16
+
+/*
+ * The per-task sched_qos floors come from the device's own AdpfConfig: the
+ * sensitive-standard profile uses the session's initial uclamp.min and the
+ * extreme profile its ceiling. They clamp one task and never a cgroup, so a
+ * session profile can no longer lower the top-app group floor.
+ */
+#define VS_QOS_STANDARD_MIN	162
+#define VS_QOS_EXTREME_MIN	480
 
 /*
  * cpu.uclamp.min and cpu.uclamp.max take a percentage in fixed point with
@@ -89,6 +101,9 @@ enum vs_kind {
 	VS_TGID_TYPE,
 	VS_RAMPUP_SET,
 	VS_RAMPUP_CLEAR,
+	VS_QOS_NONE,
+	VS_QOS_STANDARD,
+	VS_QOS_EXTREME,
 };
 
 /* One node: a name format for the per group nodes, a literal one otherwise. */
@@ -321,6 +336,24 @@ static int vs_rampup_clear(char *buf)
 	return 0;
 }
 
+/*
+ * Set one task's uclamp.min through the same entry the uclamp UAPI uses, with
+ * policy and scheduling parameters kept so only the clamp changes.
+ */
+static int vs_set_uclamp_min(struct task_struct *task, unsigned int min)
+{
+	struct sched_attr attr = {
+		.size		= sizeof(attr),
+		.sched_policy	= -1,
+		.sched_flags	= SCHED_FLAG_KEEP_POLICY |
+				  SCHED_FLAG_KEEP_PARAMS |
+				  SCHED_FLAG_UTIL_CLAMP_MIN,
+		.sched_util_min	= min,
+	};
+
+	return sched_setattr_nocheck(task, &attr);
+}
+
 /* The percentage equivalent at the cgroup file's own resolution. */
 static void vs_uclamp_percent(unsigned long util, char *out, size_t len)
 {
@@ -441,6 +474,42 @@ static int vs_node_apply(struct vs_node *node, char *buf, char *value,
 
 		stored = buf;
 		break;
+	case VS_QOS_NONE:
+	case VS_QOS_STANDARD:
+	case VS_QOS_EXTREME: {
+		struct task_struct *task;
+		unsigned long pid;
+		unsigned int min;
+
+		if (kstrtoul(strim(buf), 10, &pid) || !pid)
+			return -EINVAL;
+
+		task = find_get_task_by_vpid((pid_t)pid);
+		if (!task)
+			return -ESRCH;
+
+		ret = vs_check_cred(task);
+		if (ret) {
+			put_task_struct(task);
+			return ret;
+		}
+
+		if (node->kind == VS_QOS_EXTREME)
+			min = VS_QOS_EXTREME_MIN;
+		else if (node->kind == VS_QOS_STANDARD)
+			min = VS_QOS_STANDARD_MIN;
+		else
+			min = 0;
+
+		ret = vs_set_uclamp_min(task, min);
+		put_task_struct(task);
+		if (ret)
+			return ret;
+
+		/* The node reports the tid it was given. */
+		stored = buf;
+		break;
+	}
 	default:
 		return -EINVAL;
 	}
@@ -583,8 +652,11 @@ static const struct vs_desc vs_global_nodes[] = {
 
 /* Nodes the power HAL opens directly, outside powerhint.json. */
 static const struct vs_desc vs_sched_qos_nodes[] = {
-	{ "rampup_multiplier_set",	VS_RAMPUP_SET },
-	{ "rampup_multiplier_clear",	VS_RAMPUP_CLEAR },
+	{ "rampup_multiplier_set",		VS_RAMPUP_SET },
+	{ "rampup_multiplier_clear",		VS_RAMPUP_CLEAR },
+	{ "sched_qos_none",			VS_QOS_NONE },
+	{ "sched_qos_sensitive_standard",	VS_QOS_STANDARD },
+	{ "sched_qos_sensitive_extreme",	VS_QOS_EXTREME },
 };
 
 static void vs_add_nodes(struct proc_dir_entry *parent,
