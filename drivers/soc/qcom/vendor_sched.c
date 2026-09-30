@@ -95,6 +95,7 @@ enum vs_kind {
 	VS_QOS_EXTREME,
 	VS_QOS_NONE,
 	VS_QOS_STATE,
+	VS_UCLAMP_MIN_CAP,
 };
 
 /* One node: a name format for the per group nodes, a literal one otherwise. */
@@ -115,6 +116,15 @@ static struct vs_node *vs_nodes;
 static unsigned int vs_node_count;
 static unsigned int vs_node_max;
 static struct proc_dir_entry *vs_root;
+
+/*
+ * Test lever, disabled by default: the ceiling a write through a group's
+ * *_uclamp_min node may reach. At SCHED_CAPACITY_SCALE the clamp below is a
+ * no-op, so nothing changes until userspace writes the node. It bounds writes
+ * made through these nodes only - ADPF applies uclamp per task through
+ * sched_setattr() and is deliberately not affected.
+ */
+static unsigned int vs_uclamp_min_cap = SCHED_CAPACITY_SCALE;
 
 /*
  * check_tgid_type reports its answer through the write return value: 1 for
@@ -453,8 +463,23 @@ static int vs_node_apply(struct vs_node *node, char *buf, char *value,
 		if (ret)
 			return ret;
 
-		/* The node reports the capacity value it was given. */
-		stored = buf;
+		/*
+		 * Bound the group minimum only, so a later HAL write cannot
+		 * raise it above the cap, and report what was applied rather
+		 * than what was asked for.
+		 */
+		if (node->kind == VS_UCLAMP_MIN) {
+			unsigned int cap = READ_ONCE(vs_uclamp_min_cap);
+
+			if (util > cap)
+				util = cap;
+			snprintf(state, sizeof(state), "%lu", util);
+			stored = state;
+		} else {
+			/* The node reports the capacity value it was given. */
+			stored = buf;
+		}
+
 		vs_uclamp_percent(util, conv, sizeof(conv));
 		ret = vs_write_attr(node->group, vs_uclamp_attr(node->kind),
 				    conv, strlen(conv));
@@ -550,6 +575,19 @@ static int vs_node_apply(struct vs_node *node, char *buf, char *value,
 		ret = 0;
 		break;
 	}
+	case VS_UCLAMP_MIN_CAP: {
+		unsigned long util;
+
+		ret = vs_uclamp_value(buf, &util);
+		if (ret)
+			return ret;
+
+		WRITE_ONCE(vs_uclamp_min_cap, (unsigned int)util);
+		/* The node reports the cap now in force. */
+		snprintf(state, sizeof(state), "%lu", util);
+		stored = state;
+		break;
+	}
 	default:
 		return -EINVAL;
 	}
@@ -636,7 +674,8 @@ static umode_t vs_node_mode(enum vs_kind kind)
 	case VS_PREFER_IDLE:
 		return VS_MODE_RW;
 	case VS_QOS_STATE:
-		/* The only readable sched_qos node, and root-only. */
+	case VS_UCLAMP_MIN_CAP:
+		/* Root-only readable: qos_state and the test cap. */
 		return VS_MODE_RW_ROOT;
 	default:
 		return VS_MODE_WO;
@@ -664,7 +703,15 @@ static void vs_add_node(struct proc_dir_entry *parent, const char *name,
 	node->kind = kind;
 	node->group = group;
 	mutex_init(&node->lock);
-	strscpy(node->value, "0", sizeof(node->value));
+	/*
+	 * Value nodes start at 0; the cap starts at what it holds, since a
+	 * readback of "0" there would misreport a cap of zero.
+	 */
+	if (kind == VS_UCLAMP_MIN_CAP)
+		snprintf(node->value, sizeof(node->value), "%u",
+			 READ_ONCE(vs_uclamp_min_cap));
+	else
+		strscpy(node->value, "0", sizeof(node->value));
 
 	entry = proc_create_data(node->name, vs_node_mode(kind), parent,
 				 &vs_node_ops, node);
@@ -701,6 +748,7 @@ static const struct vs_desc vs_sched_qos_nodes[] = {
 	{ "sched_qos_sensitive_extreme",	VS_QOS_EXTREME },
 	{ "sched_qos_none",			VS_QOS_NONE },
 	{ "qos_state",				VS_QOS_STATE },
+	{ "uclamp_min_cap",			VS_UCLAMP_MIN_CAP },
 };
 
 static void vs_add_nodes(struct proc_dir_entry *parent,
