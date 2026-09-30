@@ -1469,6 +1469,15 @@ bool uclamp_boosted(struct task_struct *p)
 
 bool uclamp_latency_sensitive(struct task_struct *p)
 {
+	/*
+	 * The SCHED_QOS grant is additive to the group vote and bypasses the
+	 * two conditions below: those filter a group-wide vote that lands on
+	 * every task in the cgroup, while the HAL's per-task choice is itself
+	 * the filter.
+	 */
+	if (sched_qos_member(p))
+		return true;
+
 #ifdef CONFIG_UCLAMP_TASK_GROUP
 	struct cgroup_subsys_state *css = task_css(p, cpu_cgrp_id);
 	struct task_group *tg;
@@ -1576,6 +1585,15 @@ bool uclamp_boosted(struct task_struct *p)
 
 bool uclamp_latency_sensitive(struct task_struct *p)
 {
+	/*
+	 * UNBUILT here: this definition only exists when CONFIG_UCLAMP_TASK is
+	 * off, which our configuration does not do. The check is repeated so a
+	 * future config change cannot silently drop the per-task entitlement.
+	 * It uses no uclamp, which is why the conditions cannot come here.
+	 */
+	if (sched_qos_member(p))
+		return true;
+
 #ifdef CONFIG_SCHED_TUNE
 	return schedtune_prefer_idle(p) != 0;
 #endif
@@ -3310,6 +3328,7 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	uclamp_fork(p);
 	p->rampup_multiplier = sysctl_sched_rampup_multiplier;
 	p->rampup_multiplier_set = 0;
+	p->sched_qos_set = SCHED_QOS_NONE;
 
 	/*
 	 * Revert to default priority/policy on fork if requested.
