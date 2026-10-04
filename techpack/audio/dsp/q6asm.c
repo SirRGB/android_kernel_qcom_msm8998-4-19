@@ -2184,6 +2184,15 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 	switch (data->opcode) {
 	case ASM_DATA_EVENT_WRITE_DONE_V2:{
 		struct audio_port_data *port = &ac->port[IN];
+		/* Diagnostic: the DSP finished (consumed) a written buffer. */
+		{
+			static atomic_t asm_wdone = ATOMIC_INIT(0);
+			int c = atomic_inc_return(&asm_wdone);
+
+			if (c <= 5 || (c % 200) == 0)
+				dev_info(ac->dev, "ASM-WRITE-DONE session=%d cnt=%d\n",
+					 ac->session, c);
+		}
 		if (data->payload_size >= 2 * sizeof(uint32_t))
 			dev_vdbg(ac->dev, "%s: Rxed opcode[0x%x] status[0x%x] token[%d]",
 					__func__, payload[0], payload[1],
@@ -3178,6 +3187,7 @@ static int __q6asm_open_read(struct audio_client *ac,
 		return -EINVAL;
 	}
 	pr_debug("%s: session[%d]\n", __func__, ac->session);
+	pr_info("ASM-OPEN-READ session=%d format=0x%x dir=read\n", ac->session, format);
 
 	q6asm_add_hdr(ac, &open.hdr, sizeof(open), TRUE);
 	atomic_set(&ac->cmd_state, -1);
@@ -3389,6 +3399,8 @@ int q6asm_open_write_compressed(struct audio_client *ac, uint32_t format,
 	}
 	pr_debug("%s: session[%d] wr_format[0x%x]", __func__, ac->session,
 		format);
+	pr_info("ASM-OPEN-WRITE-COMPRESSED session=%d stream=%d format=0x%x dir=write\n",
+		ac->session, ac->stream_id, format);
 
 	q6asm_add_hdr(ac, &open.hdr, sizeof(open), TRUE);
 	open.hdr.opcode = ASM_STREAM_CMD_OPEN_WRITE_COMPRESSED;
@@ -3496,6 +3508,8 @@ static int __q6asm_open_write(struct audio_client *ac, uint32_t format,
 
 	dev_vdbg(ac->dev, "%s: session[%d] wr_format[0x%x]\n",
 		__func__, ac->session, format);
+	dev_info(ac->dev, "ASM-OPEN-WRITE session=%d stream=%d format=0x%x dir=write\n",
+		 ac->session, stream_id, format);
 
 	q6asm_stream_add_hdr(ac, &open.hdr, sizeof(open), TRUE, stream_id);
 	atomic_set(&ac->cmd_state, -1);

@@ -5331,7 +5331,9 @@ static int q6afe_send_enc_config(u16 port_id,
 			if (ret) {
 				pr_err("%s: AFE_ENCODER_PARAM_ID_BIT_RATE_LEVEL_MAP for port 0x%x failed %d\n",
 					__func__, port_id, ret);
+#if !defined(CONFIG_ARCH_SDM660) && !defined(CONFIG_ARCH_MSM8998)
 				goto exit;
+#endif
 			}
 		}
 
@@ -5751,6 +5753,15 @@ static int __afe_port_start(u16 port_id, union afe_port_config *afe_config,
 	    (cfg_type == AFE_PARAM_ID_SLIMBUS_CONFIG)) {
 		port_cfg.slim_sch.data_format =
 			AFE_SB_DATA_FORMAT_GENERIC_COMPRESSED;
+		/* Diagnostic: the AFE->SLIMbus route is this scheduling config. */
+		pr_info("AFE-SLIMBUS-CFG port=0x%x dev_id=%u rate=%u bit_width=%u nch=%u data_fmt=%u ch0=%u ch1=%u codec_fmt=0x%x\n",
+			port_id, port_cfg.slim_sch.slimbus_dev_id,
+			port_cfg.slim_sch.sample_rate,
+			port_cfg.slim_sch.bit_width,
+			port_cfg.slim_sch.num_channels,
+			port_cfg.slim_sch.data_format,
+			port_cfg.slim_sch.shared_ch_mapping[0],
+			port_cfg.slim_sch.shared_ch_mapping[1], codec_format);
 	}
 	ret = q6afe_pack_and_set_param_in_band(port_id,
 					       q6audio_get_port_index(port_id),
@@ -5767,11 +5778,24 @@ static int __afe_port_start(u16 port_id, union afe_port_config *afe_config,
 			pr_debug("%s: Found AFE encoder support  for SLIMBUS format = %d\n",
 						__func__, codec_format);
 
+			{
+				int avcs_ver = q6core_get_avcs_api_version_per_service(
+					APRV2_IDS_SERVICE_ID_ADSP_CORE_V);
+
+				pr_info("%s: codec_format=0x%x AVCS ver=%d (need>=%d) %s\n",
+					__func__, codec_format, avcs_ver,
+					AVCS_API_VERSION_V5,
+					avcs_ver >= AVCS_API_VERSION_V5 ?
+					"loading AVCS modules" :
+					"SKIPPING AVCS module load");
+			}
 			if ((q6core_get_avcs_api_version_per_service(
 				APRV2_IDS_SERVICE_ID_ADSP_CORE_V) >=
 						AVCS_API_VERSION_V5)) {
 				ret = q6afe_load_avcs_modules(2, port_id,
 					ENCODER_CASE, codec_format);
+				pr_info("%s: q6afe_load_avcs_modules(port 0x%x, fmt 0x%x) ret=%d\n",
+					__func__, port_id, codec_format, ret);
 				if (ret < 0) {
 					pr_err("%s:encoder load for port 0x%x failed %d\n",
 						__func__, port_id, ret);
@@ -5784,6 +5808,8 @@ static int __afe_port_start(u16 port_id, union afe_port_config *afe_config,
 						    afe_in_channels,
 						    afe_in_bit_width,
 						    scrambler_mode, mono_mode);
+			pr_info("%s: q6afe_send_enc_config(port 0x%x, fmt 0x%x) ret=%d\n",
+				__func__, port_id, codec_format, ret);
 			if (ret) {
 				pr_err("%s: AFE encoder config for port 0x%x failed %d\n",
 					__func__, port_id, ret);

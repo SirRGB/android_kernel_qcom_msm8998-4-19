@@ -3482,6 +3482,11 @@ void adm_copp_mfc_cfg(int port_id, int copp_idx, int dst_sample_rate)
 	open.dev_num_channel = mfc_cfg.num_channels =
 		atomic_read(&this_adm.copp.channels[port_idx][copp_idx]);
 
+	/* Diagnostic: the MFC is being told to convert the ADM PCM to this rate. */
+	pr_info("%s: port_id=%#x copp_idx=%d dst_rate=%d bits=%d ch=%d\n",
+		__func__, port_id, copp_idx, dst_sample_rate,
+		mfc_cfg.bits_per_sample, mfc_cfg.num_channels);
+
 	rc = adm_arrange_mch_map(&open, ADM_PATH_PLAYBACK,
 		mfc_cfg.num_channels, port_idx);
 	if (rc < 0) {

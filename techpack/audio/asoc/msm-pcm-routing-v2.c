@@ -198,6 +198,13 @@ static bool msm_is_resample_needed(int input_sr, int output_sr)
 	if (input_sr != output_sr)
 		rc = true;
 
+	/* Diagnostic: the ADM MFC resample gate (input = FE/session rate,
+	 * output = msm_bedais[be].sample_rate). If output is 0 the BE hw_params
+	 * has not run yet and the MFC will be programmed with rate 0.
+	 */
+	pr_info("%s: input_sr=%d output_sr=%d -> resample=%d\n",
+		__func__, input_sr, output_sr, rc);
+
 	pr_debug("perform resampling (%s) for copp rate (%d)afe rate (%d)",
 		(rc ? "oh yes" : "not really"),
 		input_sr, output_sr);

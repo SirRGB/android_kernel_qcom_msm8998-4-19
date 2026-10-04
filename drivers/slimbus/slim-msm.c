@@ -20,6 +20,20 @@
 
 int msm_slim_rx_enqueue(struct msm_slim_ctrl *dev, u32 *buf, u8 len)
 {
+	/* Diagnostic: count SLIMbus RX messages/bytes coming up from the ADSP. */
+	{
+		static atomic_t slim_rx_cnt = ATOMIC_INIT(0);
+		static atomic_t slim_rx_bytes = ATOMIC_INIT(0);
+		int c = atomic_inc_return(&slim_rx_cnt);
+
+		atomic_add(len, &slim_rx_bytes);
+		if (c <= 5 || (c % 1000) == 0)
+			dev_info(dev->dev,
+				 "SLIM-RX cnt=%d bytes=%d len=%u head=%08x %08x %08x\n",
+				 c, atomic_read(&slim_rx_bytes), len,
+				 len >= 4 ? buf[0] : 0, len >= 8 ? buf[1] : 0,
+				 len >= 12 ? buf[2] : 0);
+	}
 	spin_lock(&dev->rx_lock);
 	if ((dev->tail + 1) % MSM_CONCUR_MSG == dev->head) {
 		spin_unlock(&dev->rx_lock);

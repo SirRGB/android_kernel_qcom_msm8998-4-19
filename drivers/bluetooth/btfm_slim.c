@@ -21,6 +21,11 @@
 #include "btfm_slim_slave.h"
 #include <linux/bluetooth-power.h>
 
+/* Diagnostic: selectable A2DP 44.1k SLIMbus channel definition variant. */
+static int chcfg;
+module_param(chcfg, int, 0644);
+MODULE_PARM_DESC(chcfg, "BT SLIMbus A2DP 44.1k channel definition variant 0..3");
+
 #define DELAY_FOR_PORT_OPEN_MS (200)
 
 bool btfm_is_port_opening_delayed = true;
@@ -180,6 +185,36 @@ int btfm_slim_enable_ch(struct btfmslim *btfmslim, struct btfmslim_ch *ch,
 	prop.ratem = ((rates == 44100) || (rates == 88200)) ?
 		(rates/11025) : (rates/4000);
 	prop.sampleszbits = 16;
+
+	/*
+	 * Diagnostic: runtime-selectable A2DP SLIMbus channel definition for the
+	 * 44.1k/88.2k family via /sys/module/btfm_slim/parameters/chcfg.
+	 *   0 = current 4.19 (PUSH / 11025 / ratem=rates/11025 / NOT_DEFINED)
+	 *   1 = AUTO_ISO / 11025 / ratem=rates/11025 / NOT_DEFINED
+	 *   2 = PUSH / 4000 / ratem=rates/4000 / NOT_DEFINED
+	 *   3 = AUTO_ISO / 4000 / ratem=rates/4000 / LPCM_AUDIO
+	 */
+	if (rates == 44100 || rates == 88200) {
+		switch (chcfg) {
+		case 1:
+			prop.prot = SLIM_AUTO_ISO;
+			break;
+		case 2:
+			prop.baser = SLIM_RATE_4000HZ;
+			prop.ratem = rates / 4000;
+			break;
+		case 3:
+			prop.prot = SLIM_AUTO_ISO;
+			prop.baser = SLIM_RATE_4000HZ;
+			prop.dataf = SLIM_CH_DATAF_LPCM_AUDIO;
+			prop.ratem = rates / 4000;
+			break;
+		default:
+			break;
+		}
+		BTFMSLIM_INFO("A2DP 44.1k chcfg=%d -> prot:%d baser:%d ratem:%d dataf:%d",
+			chcfg, prop.prot, prop.baser, prop.ratem, prop.dataf);
+	}
 
 	ch_h[0] = ch->ch_hdl;
 	ch_h[1] = (grp) ? (ch+1)->ch_hdl : 0;

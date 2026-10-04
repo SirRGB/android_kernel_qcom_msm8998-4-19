@@ -2442,7 +2442,25 @@ static int msm_dai_q6_slim_bus_hw_params(struct snd_pcm_hw_params *params,
 	dai_data->port_config.slim_sch.sample_rate = dai_data->rate;
 	dai_data->port_config.slim_sch.num_channels = dai_data->channels;
 
-	dev_dbg(dai->dev, "%s:slimbus_dev_id[%hu] bit_wd[%hu] format[%hu]\n"
+	/*
+	 * Match the 4.4 reference: SLIMBUS_7/8 live on AFE_SLIMBUS_DEVICE_2, not the
+	 * DT-provided id. The 4.19 port dropped this switch and derived the id from
+	 * qcom,msm-dai-q6-slim-dev-id instead, which routes the BT AFE port to the
+	 * wrong SLIMbus device.
+	 */
+	switch (dai->id) {
+	case SLIMBUS_7_RX:
+	case SLIMBUS_7_TX:
+	case SLIMBUS_8_RX:
+	case SLIMBUS_8_TX:
+		dai_data->port_config.slim_sch.slimbus_dev_id =
+			AFE_SLIMBUS_DEVICE_2;
+		break;
+	default:
+		break;
+	}
+
+	dev_info(dai->dev, "%s:slimbus_dev_id[%hu] bit_wd[%hu] format[%hu]\n"
 		"num_channel %hu  shared_ch_mapping[0]  %hu\n"
 		"slave_port_mapping[1]  %hu slave_port_mapping[2]  %hu\n"
 		"sample_rate %d\n", __func__,
@@ -3850,6 +3868,9 @@ static int msm_dai_q6_slim_rx_drift_get(struct snd_kcontrol *kcontrol,
 
 	memcpy(ucontrol->value.bytes.data, (void *)&timing_stats,
 			sizeof(struct afe_param_id_dev_timing_stats));
+	/* Diagnostic: dump the SLIMbus RX drift/timing stats on each read. */
+	pr_info("%s: port %d drift stats [%*ph]\n", __func__, dai->id,
+		(int)sizeof(timing_stats), (u8 *)&timing_stats);
 done:
 	return ret;
 }
