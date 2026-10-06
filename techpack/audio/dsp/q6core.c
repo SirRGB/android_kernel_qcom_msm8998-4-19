@@ -1148,6 +1148,9 @@ int32_t q6core_load_unload_topo_modules(uint32_t topo_id,
 	struct avcs_cmd_load_unload_topo_modules load_unload_topo_modules;
 	int ret = 0;
 
+	pr_info("DGLTOPO %s topo=0x%x op=%s\n", __func__, topo_id,
+		preload_type == CORE_LOAD_TOPOLOGY ? "load" : "unload");
+
 	mutex_lock(&(q6core_lcl.cmd_lock));
 	ocm_core_open();
 	if (q6core_lcl.core_handle_q == NULL) {
@@ -1184,6 +1187,8 @@ int32_t q6core_load_unload_topo_modules(uint32_t topo_id,
 
 done:
 	mutex_unlock(&(q6core_lcl.cmd_lock));
+
+	pr_info("DGLTOPO %s topo=0x%x ret=%d\n", __func__, topo_id, ret);
 
 	return ret;
 }
