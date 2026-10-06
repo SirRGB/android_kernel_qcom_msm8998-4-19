@@ -387,6 +387,14 @@ void add_popp(u32 dev_idx, u32 port_id, u32 popp_id)
 		rtac_adm_data.device[dev_idx].num_of_popp - 1].popp_topology,
 		rtac_adm_data.device[dev_idx].popp[
 		rtac_adm_data.device[dev_idx].num_of_popp - 1].app_type);
+	pr_info("DGLRTCADD popp-stored idx=%d port=%d copp=0x%x popp=0x%x popp_topo=0x%x popp_app=0x%x num_popp=%d\n",
+		dev_idx, rtac_adm_data.device[dev_idx].afe_port,
+		rtac_adm_data.device[dev_idx].copp, popp_id,
+		rtac_adm_data.device[dev_idx].popp[
+			rtac_adm_data.device[dev_idx].num_of_popp - 1].popp_topology,
+		rtac_adm_data.device[dev_idx].popp[
+			rtac_adm_data.device[dev_idx].num_of_popp - 1].app_type,
+		rtac_adm_data.device[dev_idx].num_of_popp);
 done:
 	return;
 }
@@ -416,6 +424,9 @@ void rtac_add_adm_device(u32 port_id, u32 copp_id, u32 path_id, u32 popp_id,
 
 	pr_debug("%s: num rtac devices %d port_id = %d, copp_id = %d\n",
 		__func__, rtac_adm_data.num_of_dev, port_id, copp_id);
+	pr_info("DGLRTCADD call port=%d copp=0x%x path=%d popp=0x%x app=0x%x acdb=%d num_before=%d\n",
+		port_id, copp_id, path_id, popp_id, app_type, acdb_id,
+		rtac_adm_data.num_of_dev);
 
 	mutex_lock(&rtac_adm_mutex);
 	if (rtac_adm_data.num_of_dev == RTAC_MAX_ACTIVE_DEVICES) {
@@ -428,6 +439,8 @@ void rtac_add_adm_device(u32 port_id, u32 copp_id, u32 path_id, u32 popp_id,
 		for (; i < rtac_adm_data.num_of_dev; i++) {
 			if (rtac_adm_data.device[i].afe_port == port_id &&
 			    rtac_adm_data.device[i].copp == copp_id) {
+				pr_info("DGLRTCADD popp-to-existing idx=%d port=%d copp=0x%x popp=0x%x\n",
+					i, port_id, copp_id, popp_id);
 				add_popp(i, port_id, popp_id);
 				goto done;
 			}
@@ -459,6 +472,17 @@ void rtac_add_adm_device(u32 port_id, u32 copp_id, u32 path_id, u32 popp_id,
 		rtac_adm_data.device[i].num_of_popp++].app_type =
 		q6asm_get_asm_app_type(popp_id);
 
+	pr_info("DGLRTCADD stored idx=%d num=%d port=%d copp=0x%x topo=0x%x afe_topo=0x%x app=0x%x acdb=%d popp=0x%x popp_topo=0x%x popp_app=0x%x\n",
+		i, rtac_adm_data.num_of_dev, rtac_adm_data.device[i].afe_port,
+		rtac_adm_data.device[i].copp, rtac_adm_data.device[i].topology_id,
+		rtac_adm_data.device[i].afe_topology, rtac_adm_data.device[i].app_type,
+		rtac_adm_data.device[i].acdb_dev_id,
+		rtac_adm_data.device[i].popp[
+			rtac_adm_data.device[i].num_of_popp - 1].popp,
+		rtac_adm_data.device[i].popp[
+			rtac_adm_data.device[i].num_of_popp - 1].popp_topology,
+		rtac_adm_data.device[i].popp[
+			rtac_adm_data.device[i].num_of_popp - 1].app_type);
 	pr_debug("%s: topology = 0x%x, afe_topology = 0x%x, port_id = %d, copp_id = %d, app id = 0x%x, acdb id = %d, popp_id = %d, popp topology = 0x%x, popp app type = 0x%x\n",
 		__func__,
 		rtac_adm_data.device[i].topology_id,

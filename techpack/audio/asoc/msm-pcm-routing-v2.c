@@ -1185,6 +1185,9 @@ static struct cal_block_data *msm_routing_find_topology_by_path(int path,
 			continue;
 		cal_info = (struct audio_cal_info_adm_top *)
                       	 	 cal_block->cal_info;
+		pr_info("DGLADM cand-by-path idx=%d path=%d app=0x%x acdb=%d topo=0x%x\n",
+			cal_index, cal_info->path, cal_info->app_type,
+			cal_info->acdb_id, cal_info->topology);
 		if ((cal_info->path == path)  &&
 			(cal_info->app_type == app_type) &&
 			(cal_info->acdb_id == acdb_id)) {
@@ -1218,6 +1221,9 @@ static struct cal_block_data *msm_routing_find_topology(int path,
 
 		cal_info = (struct audio_cal_info_adm_top *)
 			cal_block->cal_info;
+		pr_info("DGLADM cand idx=%d exact=%d path=%d app=0x%x acdb=%d topo=0x%x\n",
+			cal_index, exact, cal_info->path, cal_info->app_type,
+			cal_info->acdb_id, cal_info->topology);
 		if ((cal_info->path == path)  &&
 			(cal_info->app_type == app_type) &&
 			(cal_info->acdb_id == acdb_id)) {
@@ -1272,6 +1278,9 @@ static int msm_routing_get_adm_topology(int fedai_id, int session_type,
 	acdb_dev_id =
 		fe_dai_app_type_cfg[fedai_id][session_type][be_id].acdb_dev_id;
 
+	pr_info("DGLADM req fedai=%d session=%d be=%d app=0x%x acdb=%d\n",
+		fedai_id, session_type, be_id, app_type, acdb_dev_id);
+
 	pr_debug("%s: Check for exact LSM topology\n", __func__);
 	topology = msm_routing_find_topology_on_index(session_type,
 					       app_type,
@@ -1289,6 +1298,8 @@ static int msm_routing_get_adm_topology(int fedai_id, int session_type,
 			topology = NULL_COPP_TOPOLOGY;
 	}
 done:
+	pr_info("DGLADM ret fedai=%d session=%d be=%d topology=%d\n",
+		fedai_id, session_type, be_id, topology);
 	pr_debug("%s: Using topology %d\n", __func__, topology);
 	return topology;
 }

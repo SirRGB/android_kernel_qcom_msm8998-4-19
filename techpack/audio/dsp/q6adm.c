@@ -3646,6 +3646,15 @@ int adm_matrix_map(int path, struct route_payload payload_map, int perf_mode,
 		goto fail_cmd;
 	}
 
+	{
+		int dgl_gate = ((perf_mode != ULTRA_LOW_LATENCY_PCM_MODE) &&
+				(path != ADM_PATH_COMPRESSED_RX));
+
+		pr_info("DGLRTAC map session=0x%x path=%d perf_mode=%d num_copps=%d rtac_add=%d\n",
+			payload_map.session_id, get_cal_path(path), perf_mode,
+			payload_map.num_copps, dgl_gate);
+	}
+
 	if ((perf_mode != ULTRA_LOW_LATENCY_PCM_MODE) &&
 		 (path != ADM_PATH_COMPRESSED_RX)) {
 		for (i = 0; i < payload_map.num_copps; i++) {
@@ -3657,6 +3666,11 @@ int adm_matrix_map(int path, struct route_payload payload_map, int perf_mode,
 					__func__, port_idx, copp_idx);
 				continue;
 			}
+			pr_info("DGLRTAC add port=0x%x copp=0x%x cal_path=%d popp/session=0x%x app=0x%x acdb=%d\n",
+				payload_map.port_id[i],
+				atomic_read(&this_adm.copp.id[port_idx][copp_idx]),
+				get_cal_path(path), payload_map.session_id,
+				payload_map.app_type[i], payload_map.acdb_dev_id[i]);
 			rtac_add_adm_device(payload_map.port_id[i],
 					    atomic_read(&this_adm.copp.id
 							[port_idx][copp_idx]),
