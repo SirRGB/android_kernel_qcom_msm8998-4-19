@@ -314,6 +314,11 @@ static const char * const disp_cc_parent_names_5[] = {
 	"hdmipll",
 };
 
+static struct pll_vco fabia_vco[] = {
+	{ 249600000, 2000000000, 0 },
+	{ 125000000, 1000000000, 1 },
+};
+
 /* Initial configuration for 808MHz rate */
 static const struct alpha_pll_config mmpll0_config = {
 	.l = 0x2a,
@@ -327,6 +332,8 @@ static const struct alpha_pll_config mmpll0_config = {
 static struct clk_alpha_pll mmpll0 = {
 	.offset = 0xC000,
 	.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_FABIA],
+	.vco_table = fabia_vco,
+	.num_vco = ARRAY_SIZE(fabia_vco),
 	.config = &mmpll0_config,
 	.clkr = {
 		.enable_reg = 0x1E0,
@@ -377,6 +384,8 @@ static const struct alpha_pll_config mmpll1_config = {
 static struct clk_alpha_pll mmpll1 = {
 	.offset = 0xC050,
 	.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_FABIA],
+	.vco_table = fabia_vco,
+	.num_vco = ARRAY_SIZE(fabia_vco),
 	.config = &mmpll1_config,
 	.clkr = {
 		.enable_reg = 0x1E0,
@@ -420,6 +429,8 @@ static const struct alpha_pll_config mmpll3_config = {
 static struct clk_alpha_pll mmpll3 = {
 	.offset = 0x0,
 	.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_FABIA],
+	.vco_table = fabia_vco,
+	.num_vco = ARRAY_SIZE(fabia_vco),
 	.config = &mmpll3_config,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "mmpll3",
@@ -457,6 +468,8 @@ static const struct alpha_pll_config mmpll4_config = {
 static struct clk_alpha_pll mmpll4 = {
 	.offset = 0x50,
 	.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_FABIA],
+	.vco_table = fabia_vco,
+	.num_vco = ARRAY_SIZE(fabia_vco),
 	.config = &mmpll4_config,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "mmpll4",
@@ -495,6 +508,8 @@ static const struct alpha_pll_config mmpll5_config = {
 static struct clk_alpha_pll mmpll5 = {
 	.offset = 0xA0,
 	.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_FABIA],
+	.vco_table = fabia_vco,
+	.num_vco = ARRAY_SIZE(fabia_vco),
 	.config = &mmpll5_config,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "mmpll5",
@@ -533,6 +548,8 @@ static const struct alpha_pll_config mmpll6_config = {
 static struct clk_alpha_pll mmpll6 = {
 	.offset = 0xF0,
 	.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_FABIA],
+	.vco_table = fabia_vco,
+	.num_vco = ARRAY_SIZE(fabia_vco),
 	.config = &mmpll6_config,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "mmpll6",
@@ -570,6 +587,8 @@ static const struct alpha_pll_config mmpll7_config = {
 static struct clk_alpha_pll mmpll7 = {
 	.offset = 0x140,
 	.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_FABIA],
+	.vco_table = fabia_vco,
+	.num_vco = ARRAY_SIZE(fabia_vco),
 	.config = &mmpll7_config,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "mmpll7",
@@ -607,6 +626,8 @@ static const struct alpha_pll_config mmpll10_config = {
 static struct clk_alpha_pll mmpll10 = {
 	.offset = 0x190,
 	.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_FABIA],
+	.vco_table = fabia_vco,
+	.num_vco = ARRAY_SIZE(fabia_vco),
 	.config = &mmpll10_config,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "mmpll10",
