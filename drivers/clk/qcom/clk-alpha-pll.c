@@ -1608,10 +1608,20 @@ int clk_fabia_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
 			     const struct alpha_pll_config *config)
 {
 	u32 val, mask;
+	int ret;
 
 	if (!config) {
 		pr_err("PLL configuration missing.\n");
 		return -EINVAL;
+	}
+
+	ret = regmap_read(regmap, PLL_MODE(pll), &val);
+	if (ret)
+		return ret;
+
+	if (val & PLL_LOCK_DET) {
+		pr_warn("PLL is already enabled. Skipping configuration.\n");
+		return 0;
 	}
 
 	if (config->l)
