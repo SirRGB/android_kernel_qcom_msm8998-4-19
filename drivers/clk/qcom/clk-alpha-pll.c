@@ -1694,7 +1694,11 @@ static int alpha_pll_fabia_enable(struct clk_hw *hw)
 		ret = clk_enable_regmap(hw);
 		if (ret)
 			return ret;
-		return wait_for_pll_enable_active(pll);
+		ret = wait_for_pll_enable_active(pll);
+		if (ret == 0)
+			if (pll->flags & SUPPORTS_FSM_VOTE)
+				*pll->soft_vote |= (pll->soft_vote_mask);
+		return ret;
 	}
 
 	ret = regmap_read(regmap, PLL_OPMODE(pll), &opmode_val);
@@ -1765,8 +1769,13 @@ static void alpha_pll_fabia_disable(struct clk_hw *hw)
 		return;
 
 	/* If in FSM mode, just unvote it */
-	if (val & PLL_FSM_ENA) {
-		clk_disable_regmap(hw);
+	if (val & PLL_VOTE_FSM_ENA) {
+		if (pll->flags & SUPPORTS_FSM_VOTE) {
+			*pll->soft_vote &= ~(pll->soft_vote_mask);
+			if (!*pll->soft_vote)
+				clk_disable_regmap(hw);
+		} else
+			clk_disable_regmap(hw);
 		return;
 	}
 
