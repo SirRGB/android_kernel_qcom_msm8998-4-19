@@ -111,8 +111,6 @@ static const char * const gcc_debug_mux_parent_names[] = {
 	"gcc_mss_snoc_axi_clk",
 	"gcc_gpu_cfg_ahb_clk",
 	"gcc_gpu_bimc_gfx_clk",
-	"gcc_qspi_ahb_clk",
-	"gcc_qspi_ref_clk",
 };
 
 static int gcc_debug_mux_sels[] = {
@@ -201,8 +199,6 @@ static int gcc_debug_mux_sels[] = {
 	0x0123,
 	0x013b,
 	0x013f,
-	0x0156,
-	0x0157,
 };
 
 static struct clk_debug_mux gcc_debug_mux = {
