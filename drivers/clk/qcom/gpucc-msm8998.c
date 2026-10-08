@@ -515,11 +515,7 @@ int gfxcc_msm8998_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Failed to init regmap\n");
 		return PTR_ERR(regmap);
 	}
-/*
-	regmap = qcom_cc_map(pdev, &gpu_cc_sdm845_desc);
-	if (IS_ERR(regmap))
-		return PTR_ERR(regmap);
-*/
+
 	vdd_gpucc.regulator[0] = devm_regulator_get(&pdev->dev, "vdd_gpucc");
 	if (IS_ERR(vdd_gpucc.regulator[0])) {
 		if (PTR_ERR(vdd_gpucc.regulator[0]) != -EPROBE_DEFER)
