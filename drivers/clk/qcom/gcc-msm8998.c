@@ -3152,8 +3152,6 @@ static int gcc_msm8998_probe(struct platform_device *pdev)
 			return ret;
 	}
 
-	// Do not configure GPLL0, or hypervisor will fault!!
-	//clk_fabia_pll_configure(&gpll0, regmap, &gpll0_config);
 	clk_fabia_pll_configure(&gpll4, regmap, &gpll4_config);
 
 	/*
