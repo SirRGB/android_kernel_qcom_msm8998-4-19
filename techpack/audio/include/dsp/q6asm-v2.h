@@ -319,6 +319,14 @@ int q6asm_open_write_v3(struct audio_client *ac, uint32_t format,
 int q6asm_open_write_v4(struct audio_client *ac, uint32_t format,
 			uint16_t bits_per_sample);
 
+/* DIAGNOSTIC EXPERIMENT, TEMPORARY - removed with the experiment. */
+int q6asm_open_write_v4_asmtopo(struct audio_client *ac, uint32_t format,
+				uint16_t bits_per_sample,
+				bool overwrite_topology, int topology);
+int q6asm_open_write_v5_asmtopo(struct audio_client *ac, uint32_t format,
+				uint16_t bits_per_sample,
+				bool overwrite_topology, int topology);
+
 int q6asm_open_write_v5(struct audio_client *ac, uint32_t format,
 			uint16_t bits_per_sample);
 

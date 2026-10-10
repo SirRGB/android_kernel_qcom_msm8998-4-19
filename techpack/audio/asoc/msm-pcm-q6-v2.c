@@ -391,14 +391,30 @@ static int msm_pcm_playback_prepare(struct snd_pcm_substream *substream)
 			return -ENOMEM;
 		}
 	} else {
+		/*
+		 * DIAGNOSTIC EXPERIMENT, TEMPORARY - removed with the
+		 * experiment. Non-zero only for the streams that run a Dirac
+		 * topology, so every other stream opens exactly as before.
+		 */
+		int dirac_topo = msm_pcm_routing_dirac_adm_topology(
+					soc_prtd->dai_link->id, SESSION_TYPE_RX);
+
 		if ((q6core_get_avcs_api_version_per_service(
 				APRV2_IDS_SERVICE_ID_ADSP_ASM_V) >=
 				ADSP_ASM_API_VERSION_V2))
-			ret = q6asm_open_write_v5(prtd->audio_client,
-				fmt_type, bits_per_sample);
+			ret = dirac_topo ?
+				q6asm_open_write_v5_asmtopo(prtd->audio_client,
+					fmt_type, bits_per_sample, true,
+					dirac_topo) :
+				q6asm_open_write_v5(prtd->audio_client,
+					fmt_type, bits_per_sample);
 		else
-			ret = q6asm_open_write_v4(prtd->audio_client,
-				fmt_type, bits_per_sample);
+			ret = dirac_topo ?
+				q6asm_open_write_v4_asmtopo(prtd->audio_client,
+					fmt_type, bits_per_sample, true,
+					dirac_topo) :
+				q6asm_open_write_v4(prtd->audio_client,
+					fmt_type, bits_per_sample);
 
 		if (ret < 0) {
 			pr_err("%s: q6asm_open_write failed (%d)\n",

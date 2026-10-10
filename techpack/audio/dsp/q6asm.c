@@ -3479,7 +3479,8 @@ EXPORT_SYMBOL(q6asm_open_write_compressed);
 static int __q6asm_open_write(struct audio_client *ac, uint32_t format,
 			      uint16_t bits_per_sample, uint32_t stream_id,
 			      bool is_gapless_mode,
-			      uint32_t pcm_format_block_ver)
+			      uint32_t pcm_format_block_ver,
+			      bool overwrite_topology, int topology)
 {
 	int rc = 0x00;
 	struct asm_stream_cmd_open_write_v3 open;
@@ -3537,6 +3538,22 @@ static int __q6asm_open_write(struct audio_client *ac, uint32_t format,
 
 	if (ac->perf_mode != LEGACY_PCM_MODE)
 		open.postprocopo_id = ASM_STREAM_POSTPROCOPO_ID_NONE;
+
+	/*
+	 * DIAGNOSTIC EXPERIMENT, TEMPORARY - removed with the experiment.
+	 *
+	 * Align the ASM postproc topology with the ADM/copp topology the stream
+	 * actually runs, so the ACDB loader's popp lookup can match the cal
+	 * frames on it. Deliberately placed AFTER the perf-mode assignment
+	 * above, which would otherwise replace it with
+	 * ASM_STREAM_POSTPROCOPO_ID_NONE, and it writes the session fields too
+	 * because a reused (gapless) session keeps its previous topology.
+	 */
+	if (overwrite_topology) {
+		open.postprocopo_id = topology;
+		ac->topology = topology;
+		ac->app_type = cal_info.app_type;
+	}
 
 	pr_debug("%s: perf_mode %d asm_topology 0x%x bps %d\n", __func__,
 		 ac->perf_mode, open.postprocopo_id, open.bits_per_sample);
@@ -3686,9 +3703,28 @@ int q6asm_open_write_v4(struct audio_client *ac, uint32_t format,
 {
 	return __q6asm_open_write(ac, format, bits_per_sample,
 				  ac->stream_id, false /*gapless*/,
-				  PCM_MEDIA_FORMAT_V4 /*pcm_format_block_ver*/);
+				  PCM_MEDIA_FORMAT_V4 /*pcm_format_block_ver*/,
+				  false /*overwrite_topology*/, 0);
 }
 EXPORT_SYMBOL(q6asm_open_write_v4);
+
+/*
+ * DIAGNOSTIC EXPERIMENT, TEMPORARY - removed with the experiment.
+ *
+ * The write-open variant that lets the caller state the ASM postproc topology,
+ * mirroring __q6asm_open_read_write(). Only the diagnostic caller uses it, so
+ * every other stream keeps the topology its calibration picked.
+ */
+int q6asm_open_write_v4_asmtopo(struct audio_client *ac, uint32_t format,
+				uint16_t bits_per_sample,
+				bool overwrite_topology, int topology)
+{
+	return __q6asm_open_write(ac, format, bits_per_sample,
+				  ac->stream_id, false /*gapless*/,
+				  PCM_MEDIA_FORMAT_V4 /*pcm_format_block_ver*/,
+				  overwrite_topology, topology);
+}
+EXPORT_SYMBOL(q6asm_open_write_v4_asmtopo);
 
 int q6asm_stream_open_write_v2(struct audio_client *ac, uint32_t format,
 			       uint16_t bits_per_sample, int32_t stream_id,
@@ -3730,9 +3766,26 @@ int q6asm_open_write_v5(struct audio_client *ac, uint32_t format,
 {
 	return __q6asm_open_write(ac, format, bits_per_sample,
 				  ac->stream_id, false /*gapless*/,
-				  PCM_MEDIA_FORMAT_V5 /*pcm_format_block_ver*/);
+				  PCM_MEDIA_FORMAT_V5 /*pcm_format_block_ver*/,
+				  false /*overwrite_topology*/, 0);
 }
 EXPORT_SYMBOL(q6asm_open_write_v5);
+
+/*
+ * DIAGNOSTIC EXPERIMENT, TEMPORARY - removed with the experiment.
+ *
+ * The v5 sibling of q6asm_open_write_v4_asmtopo(); see that comment.
+ */
+int q6asm_open_write_v5_asmtopo(struct audio_client *ac, uint32_t format,
+				uint16_t bits_per_sample,
+				bool overwrite_topology, int topology)
+{
+	return __q6asm_open_write(ac, format, bits_per_sample,
+				  ac->stream_id, false /*gapless*/,
+				  PCM_MEDIA_FORMAT_V5 /*pcm_format_block_ver*/,
+				  overwrite_topology, topology);
+}
+EXPORT_SYMBOL(q6asm_open_write_v5_asmtopo);
 
 
 /*
