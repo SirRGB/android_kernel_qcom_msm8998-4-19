@@ -1293,6 +1293,67 @@ done:
 	return topology;
 }
 
+/* DIAGNOSTIC EXPERIMENT, TEMPORARY - removed with the experiment. */
+static uint8_t is_be_dai_extproc(int be_dai);
+
+/*
+ * DIAGNOSTIC EXPERIMENT, TEMPORARY - removed with the experiment.
+ *
+ * The ASM postproc topology a Dirac stream should run, so the popp the ACDB
+ * loader looks for carries the same topology the cal frames ask for. Scoped by
+ * the routing table's own answer - the ADM topology of an active RX backend -
+ * rather than by a device id, because on this platform the Dirac topologies and
+ * the speaker/headset device topologies coincide. The platform's ACDB ids are a
+ * documented fallback for the case where the table is not populated yet.
+ * Returns 0 for every other stream, so nothing outside these routes changes,
+ * and it refuses to guess when more than one backend matches.
+ */
+#define DIRAC_ADM_TOPO_SPEAKER	0x10012d00
+#define DIRAC_ADM_TOPO_HEADSET	0x10012d01
+#define DIRAC_ACDB_SPEAKER	15
+#define DIRAC_ACDB_HEADSET	10
+
+int msm_pcm_routing_dirac_adm_topology(int fedai_id, int session_type)
+{
+	int i, topology, acdb_dev_id, found = 0, match = 0;
+
+	if (cal_data == NULL || fedai_id >= MSM_FRONTEND_DAI_MAX)
+		return 0;
+
+	for (i = 0; i < MSM_BACKEND_DAI_MAX; i++) {
+		if (is_be_dai_extproc(i) || !msm_bedais[i].active ||
+		    (afe_get_port_type(msm_bedais[i].port_id) !=
+		     MSM_AFE_PORT_TYPE_RX))
+			continue;
+		topology = msm_routing_get_adm_topology(fedai_id,
+							session_type, i);
+		if (topology == DIRAC_ADM_TOPO_SPEAKER ||
+		    topology == DIRAC_ADM_TOPO_HEADSET) {
+			pr_info("%s: matched by topology fedai %d be %d topo 0x%x\n",
+				__func__, fedai_id, i, topology);
+			found++;
+			match = topology;
+			continue;
+		}
+		acdb_dev_id = fe_dai_app_type_cfg[fedai_id][session_type][i]
+				      .acdb_dev_id;
+		if (acdb_dev_id == DIRAC_ACDB_SPEAKER ||
+		    acdb_dev_id == DIRAC_ACDB_HEADSET) {
+			pr_info("%s: matched by acdb fallback fedai %d be %d acdb %d topo 0x%x\n",
+				__func__, fedai_id, i, acdb_dev_id, topology);
+			found++;
+			match = topology;
+		}
+	}
+	if (found != 1) {
+		pr_info("%s: %d backends matched, not overriding\n",
+			__func__, found);
+		return 0;
+	}
+	return match;
+}
+EXPORT_SYMBOL(msm_pcm_routing_dirac_adm_topology);
+
 static uint8_t is_be_dai_extproc(int be_dai)
 {
 	if (be_dai == MSM_BACKEND_DAI_EXTPROC_RX ||

@@ -611,6 +611,9 @@ struct msm_pcm_stream_app_type_cfg {
  * dspst_id:  DSP audio stream ID
  * stream_type: playback or capture
  */
+/* DIAGNOSTIC EXPERIMENT, TEMPORARY - removed with the experiment. */
+int msm_pcm_routing_dirac_adm_topology(int fedai_id, int session_type);
+
 int msm_pcm_routing_reg_phy_stream(int fedai_id, int perf_mode, int dspst_id,
 				   int stream_type);
 void msm_pcm_routing_reg_psthr_stream(int fedai_id, int dspst_id,
