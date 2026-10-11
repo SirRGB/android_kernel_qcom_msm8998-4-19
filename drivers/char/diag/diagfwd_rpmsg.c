@@ -1059,6 +1059,13 @@ static int diag_rpmsg_probe(struct rpmsg_device *rpdev)
 
 	rpmsg_info = diag_get_rpmsg_ptr(rpdev->id.name, peripheral);
 	if (rpmsg_info) {
+		if (rpmsg_info->probed) {
+			dev_warn(&rpdev->dev,
+				 "diag: %s already bound, ignoring %s\n",
+				 rpmsg_info->name, rpdev->id.name);
+			return 0;
+		}
+
 		mutex_lock(&driver->rpmsginfo_mutex[PERI_RPMSG]);
 		rpmsg_info->hdl = rpdev;
 		atomic_set(&rpmsg_info->opened, 1);

@@ -92,6 +92,14 @@ of these nodes are defined by the individual bindings for the specific function
 		    to tweak the default intents available for the channel to
 		    meet expectations of the remote.
 
+- qcom,glink-open-local:
+	Usage: optional
+	Value type: <empty>
+	Definition: request that the local processor open this channel itself,
+		    for channels the remote subsystem does not initiate. The
+		    channel is opened once the edge is up and re-established after
+		    a subsystem restart.
+
 = EXAMPLE
 The following example represents the GLINK RPM node on a MSM8996 device, with
 the function for the "rpm_request" channel defined, which is used for

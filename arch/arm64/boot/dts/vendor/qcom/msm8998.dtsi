@@ -815,16 +815,29 @@
 			qcom,diag_data {
 				qcom,glink-channels = "DIAG_DATA";
 				qcom,intents = <0x4000 2>;
+				qcom,glink-open-local;
+			};
+
+			qcom,diag {
+				qcom,glink-channels = "DIAG";
+				qcom,intents = <0x4000 2>;
 			};
 
 			qcom,diag_ctrl {
 				qcom,glink-channels = "DIAG_CTRL";
+				qcom,intents = <0x4000 1>;
+				qcom,glink-open-local;
+			};
+
+			qcom,diag_cntl {
+				qcom,glink-channels = "DIAG_CNTL";
 				qcom,intents = <0x4000 1>;
 			};
 
 			qcom,diag_cmd {
 				qcom,glink-channels = "DIAG_CMD";
 				qcom,intents = <0x4000 1>;
+				qcom,glink-open-local;
 			};
 
 			qcom,modem_glink_ssr {

@@ -170,6 +170,10 @@ struct qcom_glink {
 	wait_queue_head_t tx_avail_notify;
 	bool sent_read_notify;
 
+	struct delayed_work local_open_work;
+	struct list_head local_open_list;
+	unsigned int local_open_attempts;
+
 	void *ilc;
 };
 
@@ -244,7 +248,14 @@ struct glink_channel {
 
 #define to_glink_channel(_ept) container_of(_ept, struct glink_channel, ept)
 
+struct qcom_glink_local_channel {
+	struct list_head node;
+	char name[RPMSG_NAME_SIZE];
+	bool opened;
+};
+
 static const struct rpmsg_endpoint_ops glink_endpoint_ops;
+static void qcom_glink_schedule_local_open(struct qcom_glink *glink);
 
 #define GLINK_CMD_VERSION		0
 #define GLINK_CMD_VERSION_ACK		1
@@ -732,6 +743,8 @@ static void qcom_glink_receive_version(struct qcom_glink *glink,
 		qcom_glink_send_version_ack(glink);
 		break;
 	}
+
+	qcom_glink_schedule_local_open(glink);
 }
 
 /**
@@ -765,6 +778,8 @@ static void qcom_glink_receive_version_ack(struct qcom_glink *glink,
 		qcom_glink_send_version(glink);
 		break;
 	}
+
+	qcom_glink_schedule_local_open(glink);
 }
 
 /**
@@ -1754,13 +1769,52 @@ static void qcom_glink_rpdev_release(struct device *dev)
 	kfree(rpdev);
 }
 
+#define QCOM_GLINK_LOCAL_OPEN_DELAY	(10 * HZ)
+#define QCOM_GLINK_LOCAL_OPEN_RETRY	(5 * HZ)
+#define QCOM_GLINK_LOCAL_OPEN_MAX	30
+
+/*
+ * Register the rpmsg device that exposes @channel on the rpmsg bus. Shared
+ * by the remote-initiated open and the AP-initiated local open.
+ */
+static struct rpmsg_device *
+qcom_glink_register_rpdev(struct qcom_glink *glink,
+			  struct glink_channel *channel)
+{
+	struct rpmsg_device *rpdev;
+	struct device_node *node;
+
+	rpdev = kzalloc(sizeof(*rpdev), GFP_KERNEL);
+	if (!rpdev)
+		return ERR_PTR(-ENOMEM);
+
+	rpdev->ept = &channel->ept;
+	strlcpy(rpdev->id.name, channel->name, RPMSG_NAME_SIZE);
+	rpdev->src = RPMSG_ADDR_ANY;
+	rpdev->dst = RPMSG_ADDR_ANY;
+	rpdev->ops = &glink_device_ops;
+
+	node = qcom_glink_match_channel(glink->dev->of_node, channel->name);
+	rpdev->dev.of_node = node;
+	rpdev->dev.parent = glink->dev;
+	rpdev->dev.release = qcom_glink_rpdev_release;
+
+	if (rpmsg_register_device(rpdev)) {
+		kfree(rpdev);
+		return ERR_PTR(-EIO);
+	}
+
+	channel->rpdev = rpdev;
+
+	return rpdev;
+}
+
 static int qcom_glink_rx_open(struct qcom_glink *glink, unsigned int rcid,
 			      char *name)
 {
 	struct glink_channel *channel;
 	struct rpmsg_device *rpdev;
 	bool create_device = false;
-	struct device_node *node;
 	int lcid;
 	int ret;
 	unsigned long flags;
@@ -1794,28 +1848,11 @@ static int qcom_glink_rx_open(struct qcom_glink *glink, unsigned int rcid,
 	complete_all(&channel->open_req);
 
 	if (create_device) {
-		rpdev = kzalloc(sizeof(*rpdev), GFP_KERNEL);
-		if (!rpdev) {
-			ret = -ENOMEM;
+		rpdev = qcom_glink_register_rpdev(glink, channel);
+		if (IS_ERR(rpdev)) {
+			ret = PTR_ERR(rpdev);
 			goto rcid_remove;
 		}
-
-		rpdev->ept = &channel->ept;
-		strlcpy(rpdev->id.name, name, RPMSG_NAME_SIZE);
-		rpdev->src = RPMSG_ADDR_ANY;
-		rpdev->dst = RPMSG_ADDR_ANY;
-		rpdev->ops = &glink_device_ops;
-
-		node = qcom_glink_match_channel(glink->dev->of_node, name);
-		rpdev->dev.of_node = node;
-		rpdev->dev.parent = glink->dev;
-		rpdev->dev.release = qcom_glink_rpdev_release;
-
-		ret = rpmsg_register_device(rpdev);
-		if (ret)
-			goto rcid_remove;
-
-		channel->rpdev = rpdev;
 	}
 	CH_INFO(channel, "\n");
 
@@ -1834,6 +1871,139 @@ free_channel:
 		kref_put(&channel->refcount, qcom_glink_channel_release);
 
 	return ret;
+}
+
+/*
+ * Find an already-known channel by name, in either direction.
+ */
+static struct glink_channel *qcom_glink_lookup_channel(struct qcom_glink *glink,
+						       const char *name)
+{
+	struct glink_channel *channel;
+	unsigned long flags;
+	int cid;
+
+	spin_lock_irqsave(&glink->idr_lock, flags);
+	idr_for_each_entry(&glink->lcids, channel, cid) {
+		if (!strcmp(channel->name, name))
+			goto found;
+	}
+	idr_for_each_entry(&glink->rcids, channel, cid) {
+		if (!strcmp(channel->name, name))
+			goto found;
+	}
+	channel = NULL;
+found:
+	spin_unlock_irqrestore(&glink->idr_lock, flags);
+
+	return channel;
+}
+
+/*
+ * Open the channels the AP must initiate itself and expose them on the
+ * rpmsg bus, so that clients such as diag can bind. Retried until the
+ * remote accepts or the attempt budget is exhausted.
+ */
+static void qcom_glink_local_open_work(struct work_struct *work)
+{
+	struct qcom_glink *glink = container_of(to_delayed_work(work),
+						struct qcom_glink,
+						local_open_work);
+	struct qcom_glink_local_channel *item, *tmp;
+	struct glink_channel *channel;
+	struct rpmsg_device *rpdev;
+	bool pending = false;
+
+	list_for_each_entry_safe(item, tmp, &glink->local_open_list, node) {
+		if (item->opened)
+			continue;
+
+		channel = qcom_glink_lookup_channel(glink, item->name);
+		if (channel && channel->rpdev) {
+			item->opened = true;
+			continue;
+		}
+
+		if (!channel) {
+			channel = qcom_glink_create_local(glink, item->name);
+			if (IS_ERR(channel)) {
+				pending = true;
+				continue;
+			}
+		}
+
+		rpdev = qcom_glink_register_rpdev(glink, channel);
+		if (IS_ERR(rpdev)) {
+			dev_err(glink->dev, "failed to expose %s\n",
+				item->name);
+			pending = true;
+			continue;
+		}
+
+		item->opened = true;
+	}
+
+	if (pending && ++glink->local_open_attempts < QCOM_GLINK_LOCAL_OPEN_MAX)
+		schedule_delayed_work(&glink->local_open_work,
+				      QCOM_GLINK_LOCAL_OPEN_RETRY);
+}
+
+/*
+ * Re-arm the local opens and schedule the worker. Called once the remote
+ * answered the version handshake, i.e. the edge is up; also after a
+ * subsystem restart, so the channels are re-established.
+ */
+static void qcom_glink_schedule_local_open(struct qcom_glink *glink)
+{
+	struct qcom_glink_local_channel *item;
+
+	if (list_empty(&glink->local_open_list) ||
+	    delayed_work_pending(&glink->local_open_work))
+		return;
+
+	list_for_each_entry(item, &glink->local_open_list, node)
+		item->opened = false;
+
+	glink->local_open_attempts = 0;
+	schedule_delayed_work(&glink->local_open_work,
+			      QCOM_GLINK_LOCAL_OPEN_DELAY);
+}
+
+static void qcom_glink_parse_local_open(struct qcom_glink *glink)
+{
+	struct qcom_glink_local_channel *item;
+	struct device_node *child;
+	const char *name;
+
+	INIT_LIST_HEAD(&glink->local_open_list);
+	INIT_DELAYED_WORK(&glink->local_open_work,
+			  qcom_glink_local_open_work);
+
+	for_each_available_child_of_node(glink->dev->of_node, child) {
+		if (!of_property_read_bool(child, "qcom,glink-open-local"))
+			continue;
+		if (of_property_read_string(child, "qcom,glink-channels",
+					    &name))
+			continue;
+
+		item = kzalloc(sizeof(*item), GFP_KERNEL);
+		if (!item)
+			break;
+
+		strlcpy(item->name, name, sizeof(item->name));
+		list_add_tail(&item->node, &glink->local_open_list);
+	}
+}
+
+static void qcom_glink_cancel_local_open(struct qcom_glink *glink)
+{
+	struct qcom_glink_local_channel *item, *tmp;
+
+	cancel_delayed_work_sync(&glink->local_open_work);
+	list_for_each_entry_safe(item, tmp, &glink->local_open_list, node) {
+		list_del(&item->node);
+		kfree(item);
+	}
 }
 
 static void qcom_glink_rx_close(struct qcom_glink *glink, unsigned int rcid)
@@ -2163,6 +2333,8 @@ struct qcom_glink *qcom_glink_native_probe(struct device *dev,
 
 	glink->ilc = ipc_log_context_create(GLINK_LOG_PAGE_CNT, glink->name, 0);
 
+	qcom_glink_parse_local_open(glink);
+
 	return glink;
 
 unregister:
@@ -2188,6 +2360,7 @@ void qcom_glink_native_remove(struct qcom_glink *glink)
 	qcom_glink_notif_reset(glink);
 	disable_irq(glink->irq);
 	qcom_glink_cancel_rx_work(glink);
+	qcom_glink_cancel_local_open(glink);
 
 	ret = device_for_each_child(glink->dev, NULL, qcom_glink_remove_device);
 	if (ret)
