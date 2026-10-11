@@ -173,6 +173,7 @@ struct qcom_glink {
 	struct delayed_work local_open_work;
 	struct list_head local_open_list;
 	unsigned int local_open_attempts;
+	struct workqueue_struct *local_open_wq;
 
 	void *ilc;
 };
@@ -1944,8 +1945,9 @@ static void qcom_glink_local_open_work(struct work_struct *work)
 	}
 
 	if (pending && ++glink->local_open_attempts < QCOM_GLINK_LOCAL_OPEN_MAX)
-		schedule_delayed_work(&glink->local_open_work,
-				      QCOM_GLINK_LOCAL_OPEN_RETRY);
+		queue_delayed_work(glink->local_open_wq,
+				   &glink->local_open_work,
+				   QCOM_GLINK_LOCAL_OPEN_RETRY);
 }
 
 /*
@@ -1957,7 +1959,7 @@ static void qcom_glink_schedule_local_open(struct qcom_glink *glink)
 {
 	struct qcom_glink_local_channel *item;
 
-	if (list_empty(&glink->local_open_list) ||
+	if (!glink->local_open_wq || list_empty(&glink->local_open_list) ||
 	    delayed_work_pending(&glink->local_open_work))
 		return;
 
@@ -1965,8 +1967,8 @@ static void qcom_glink_schedule_local_open(struct qcom_glink *glink)
 		item->opened = false;
 
 	glink->local_open_attempts = 0;
-	schedule_delayed_work(&glink->local_open_work,
-			      QCOM_GLINK_LOCAL_OPEN_DELAY);
+	queue_delayed_work(glink->local_open_wq, &glink->local_open_work,
+			   QCOM_GLINK_LOCAL_OPEN_DELAY);
 }
 
 static void qcom_glink_parse_local_open(struct qcom_glink *glink)
@@ -1993,6 +1995,10 @@ static void qcom_glink_parse_local_open(struct qcom_glink *glink)
 		strlcpy(item->name, name, sizeof(item->name));
 		list_add_tail(&item->node, &glink->local_open_list);
 	}
+
+	if (!list_empty(&glink->local_open_list))
+		glink->local_open_wq = alloc_ordered_workqueue("glink_local_open",
+							       WQ_UNBOUND);
 }
 
 static void qcom_glink_cancel_local_open(struct qcom_glink *glink)
@@ -2000,6 +2006,10 @@ static void qcom_glink_cancel_local_open(struct qcom_glink *glink)
 	struct qcom_glink_local_channel *item, *tmp;
 
 	cancel_delayed_work_sync(&glink->local_open_work);
+	if (glink->local_open_wq) {
+		destroy_workqueue(glink->local_open_wq);
+		glink->local_open_wq = NULL;
+	}
 	list_for_each_entry_safe(item, tmp, &glink->local_open_list, node) {
 		list_del(&item->node);
 		kfree(item);

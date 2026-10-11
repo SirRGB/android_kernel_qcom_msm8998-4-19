@@ -95,10 +95,11 @@ of these nodes are defined by the individual bindings for the specific function
 - qcom,glink-open-local:
 	Usage: optional
 	Value type: <empty>
-	Definition: request that the local processor open this channel itself,
-		    for channels the remote subsystem does not initiate. The
-		    channel is opened once the edge is up and re-established after
-		    a subsystem restart.
+	Definition: the AP initiates the channel open; do not set this on
+		    edges whose remote initiates the open (such as adsp, cdsp
+		    or npu). The channel is opened once the edge is up and
+		    re-established after a subsystem restart. This is a local
+		    vendor binding, not an upstream submission.
 
 = EXAMPLE
 The following example represents the GLINK RPM node on a MSM8996 device, with
