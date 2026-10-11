@@ -1959,9 +1959,18 @@ static void qcom_glink_schedule_local_open(struct qcom_glink *glink)
 {
 	struct qcom_glink_local_channel *item;
 
-	if (!glink->local_open_wq || list_empty(&glink->local_open_list) ||
+	if (list_empty(&glink->local_open_list) ||
 	    delayed_work_pending(&glink->local_open_work))
 		return;
+
+	if (!glink->local_open_wq) {
+		glink->local_open_wq = alloc_ordered_workqueue("glink_local_open",
+							       WQ_UNBOUND);
+		if (!glink->local_open_wq) {
+			dev_warn(glink->dev, "no workqueue for local opens\n");
+			return;
+		}
+	}
 
 	list_for_each_entry(item, &glink->local_open_list, node)
 		item->opened = false;
@@ -1995,10 +2004,6 @@ static void qcom_glink_parse_local_open(struct qcom_glink *glink)
 		strlcpy(item->name, name, sizeof(item->name));
 		list_add_tail(&item->node, &glink->local_open_list);
 	}
-
-	if (!list_empty(&glink->local_open_list))
-		glink->local_open_wq = alloc_ordered_workqueue("glink_local_open",
-							       WQ_UNBOUND);
 }
 
 static void qcom_glink_cancel_local_open(struct qcom_glink *glink)
