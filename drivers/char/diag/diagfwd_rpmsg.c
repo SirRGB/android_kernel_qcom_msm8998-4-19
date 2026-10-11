@@ -1017,7 +1017,11 @@ static struct diag_rpmsg_info *diag_get_rpmsg_ptr(char *name, int pid)
 			return &rpmsg_cmd[PERIPHERAL_MODEM];
 		else if (!strcmp(name, "DIAG_CNTL"))
 			return &rpmsg_cntl[PERIPHERAL_MODEM];
+		else if (!strcmp(name, "DIAG_CTRL"))
+			return &rpmsg_cntl[PERIPHERAL_MODEM];
 		else if (!strcmp(name, "DIAG"))
+			return &rpmsg_data[PERIPHERAL_MODEM];
+		else if (!strcmp(name, "DIAG_DATA"))
 			return &rpmsg_data[PERIPHERAL_MODEM];
 		else if (!strcmp(name, "DIAG_2_CMD"))
 			return &rpmsg_dci_cmd[PERIPHERAL_MODEM];
