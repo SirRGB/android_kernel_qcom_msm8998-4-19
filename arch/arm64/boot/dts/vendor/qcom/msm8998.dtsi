@@ -812,6 +812,21 @@
 				qcom,intents = <0x4000 2>;
 			};
 
+			qcom,diag {
+				qcom,glink-channels = "DIAG";
+				qcom,intents = <0x4000 2>;
+			};
+
+			qcom,diag_cntl {
+				qcom,glink-channels = "DIAG_CNTL";
+				qcom,intents = <0x4000 1>;
+			};
+
+			qcom,diag_cmd {
+				qcom,glink-channels = "DIAG_CMD";
+				qcom,intents = <0x4000 1>;
+			};
+
 			qcom,modem_glink_ssr {
 				qcom,glink-channels = "glink_ssr";
 				qcom,notify-edges = <&glink_adsp>,
