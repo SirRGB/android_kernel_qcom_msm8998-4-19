@@ -2906,12 +2906,10 @@ static int gcc_msm8998_probe(struct platform_device *pdev)
 		return PTR_ERR(regmap);
 
 	/*
-	 * Clear the HMSS_AHB_CLK_ENA bit to allow the gcc_hmss_ahb_clk clock
-	 * to be gated by RPM during VDD_MIN.
+	 * Set the HMSS_AHB_CLK_SLEEP_ENA bit to allow the hmss_ahb_clk to be
+	 * turned off by hardware during certain apps low power modes.
 	 */
-	ret = regmap_update_bits(regmap, 0x52008, BIT(21), BIT(21));
-	if (ret)
-		return ret;
+	regmap_update_bits(regmap, 0x52008, BIT(21), BIT(21));
 
 	vdd_dig.regulator[0] = devm_regulator_get(&pdev->dev, "vdd_dig");
 	if (IS_ERR(vdd_dig.regulator[0])) {
