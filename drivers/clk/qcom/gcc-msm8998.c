@@ -1153,7 +1153,6 @@ static struct clk_rcg2 hmss_gpll0_clk_src = {
 	.hid_width = 5,
 	.parent_map = gcc_parent_map_1_ao,
 	.freq_tbl = ftbl_hmss_gpll0_clk_src,
-	/* .enable_safe_config = true, -- Do we need this here? */
 	.clkr.hw.init = &(struct clk_init_data) {
 		.name = "hmss_gpll0_clk_src",
 		.parent_names = gcc_parent_names_1_ao,
@@ -1909,7 +1908,6 @@ static struct clk_branch gcc_cfg_noc_usb3_axi_clk = {
 				"usb30_master_clk_src"
 			},
 			.num_parents = 1,
-			//.flags = CLK_SET_RATE_PARENT, //HANDOFF?
 			.ops = &clk_branch2_ops,
 		},
 	},
@@ -2502,7 +2500,6 @@ static struct clk_branch gcc_usb30_master_clk = {
 		.enable_mask = BIT(0),
 		.hw.init = &(struct clk_init_data) {
 			.name = "gcc_usb30_master_clk",
-			/*TODO: Should we depend on gcc_cfg_noc_usb3_axi_clk?*/
 			.parent_names = (const char*[]) {
 				"usb30_master_clk_src",
 			},
@@ -2510,7 +2507,6 @@ static struct clk_branch gcc_usb30_master_clk = {
 			.flags = CLK_SET_RATE_PARENT,
 			.ops = &clk_branch2_ops,
 		},
-		// wtf? .depends = &gcc_cfg_noc_usb3_axi_clk.c,
 	},
 };
 
