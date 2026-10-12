@@ -441,7 +441,6 @@ static void enable_gfx_crc(struct regmap *regmap)
 
 	/* Wait for 32 cycles before continuing */
 	udelay(2);
-	//clk_set_rate(gpucc_gfx3d_clk.clkr.hw.clk, 670000000);
 
 	/* Disable the graphics clock */
 	clk_disable_unprepare(gpucc_gfx3d_clk.clkr.hw.clk);
