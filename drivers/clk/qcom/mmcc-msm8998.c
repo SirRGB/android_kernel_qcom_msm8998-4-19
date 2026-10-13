@@ -440,7 +440,7 @@ static struct clk_alpha_pll mmpll3 = {
 		.parent_names = (const char *[]){ "bi_tcxo" },
 		.num_parents = 1,
 		.ops = &clk_alpha_pll_fixed_fabia_ops,
-		VDD_MM_PLL_FMAX_MAP2(LOWER, 465000000, LOW, 930000000),
+		VDD_MM_PLL_FMAX_MAP2(LOWER, 533000000, NOMINAL, 1066000000),
 	},
 };
 
@@ -559,7 +559,7 @@ static struct clk_alpha_pll mmpll6 = {
 		.parent_names = (const char *[]){ "bi_tcxo" },
 		.num_parents = 1,
 		.ops = &clk_alpha_pll_fixed_fabia_ops,
-		VDD_MM_PLL_FMAX_MAP2(LOWER, 412500000, LOW, 825000000),
+		VDD_MM_PLL_FMAX_MAP2(LOWER, 444000000, NOMINAL, 888000000),
 	},
 };
 
