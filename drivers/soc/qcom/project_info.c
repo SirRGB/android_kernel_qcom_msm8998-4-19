@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2026, Edrick Sinsuan <evcsinsuan@gmail.com>
+ *
  * OnePlus project information sysfs interface
  */
 
