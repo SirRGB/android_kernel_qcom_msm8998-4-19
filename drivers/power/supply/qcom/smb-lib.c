@@ -2933,11 +2933,15 @@ int smblib_set_prop_boost_current(struct smb_charger *chg,
 int smblib_set_prop_typec_power_role(struct smb_charger *chg,
 				     const union power_supply_propval *val)
 {
-	/* Check if power role switch is disabled */
-	if (!get_effective_result(chg->disable_power_role_switch))
-		return __smblib_set_prop_typec_power_role(chg, val);
+	int rc = 0;
 
-	return 0;
+	/* Check if power role switch is disabled, atomically with the write */
+	lock_votable(chg->disable_power_role_switch);
+	if (!get_effective_result_locked(chg->disable_power_role_switch))
+		rc = __smblib_set_prop_typec_power_role(chg, val);
+	unlock_votable(chg->disable_power_role_switch);
+
+	return rc;
 }
 
 int smblib_set_prop_typec_select_rp(struct smb_charger *chg,
@@ -4460,6 +4464,16 @@ static void typec_sink_insertion(struct smb_charger *chg)
 {
 	int exit_mode;
 	int typec_mode;
+
+	/*
+	 * Try.SNK drives the role command bits and follows their readback.  A
+	 * sink-only request suppresses those writes, so it would follow
+	 * transitions the port never made.
+	 */
+	if (get_effective_result(chg->disable_power_role_switch)) {
+		smblib_usb_typec_change(chg);
+		return;
+	}
 
 	exit_mode = typec_try_sink(chg);
 
