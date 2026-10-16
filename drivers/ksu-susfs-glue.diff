@@ -87,7 +87,7 @@ index 9be09872..68c5e933 100644
  
  	ksu_sulog_init();
 diff --git a/kernel/hook/patch_memory.c b/kernel/hook/patch_memory.c
-index d9e40ccf..8a71a918 100644
+index d9e40ccf..4fafa4fc 100644
 --- a/kernel/hook/patch_memory.c
 +++ b/kernel/hook/patch_memory.c
 @@ -8,12 +8,8 @@
@@ -105,6 +105,30 @@ index d9e40ccf..8a71a918 100644
  
  #if defined(__aarch64__)
  
+@@ -83,6 +79,11 @@ unsigned long phys_from_virt(unsigned long addr, int *err)
+         pr_debug("Address 0x%lx maps to a PUD-level huge page\n", addr);
+         return __pud_to_phys(*pud) + ((addr & ~PUD_MASK));
+     }
++#elif defined(pud_sect)
++    if (pud_sect(*pud)) {
++        pr_debug("Address 0x%lx maps to a PUD-level section\n", addr);
++        return __pud_to_phys(*pud) + ((addr & ~PUD_MASK));
++    }
+ #endif
+ 
+     pmd = pmd_offset(pud, addr);
+@@ -93,6 +94,11 @@ unsigned long phys_from_virt(unsigned long addr, int *err)
+         pr_debug("Address 0x%lx maps to a PMD-level huge page\n", addr);
+         return __pmd_to_phys(*pmd) + ((addr & ~PMD_MASK));
+     }
++#elif defined(pmd_sect)
++    if (pmd_sect(*pmd)) {
++        pr_debug("Address 0x%lx maps to a PMD-level section\n", addr);
++        return __pmd_to_phys(*pmd) + ((addr & ~PMD_MASK));
++    }
+ #endif
+ 
+     if (pmd_none(*pmd) || pmd_bad(*pmd))
 diff --git a/kernel/hook/setuid_hook.c b/kernel/hook/setuid_hook.c
 index 3dddf937..748b9216 100644
 --- a/kernel/hook/setuid_hook.c
@@ -168,6 +192,68 @@ index 3dddf937..748b9216 100644
  
      return 0;
  }
+diff --git a/kernel/hook/syscall_table_hook.c b/kernel/hook/syscall_table_hook.c
+index 6aa55e71..a9740ff7 100644
+--- a/kernel/hook/syscall_table_hook.c
++++ b/kernel/hook/syscall_table_hook.c
+@@ -146,6 +146,8 @@ static long ksu_sth_execve(const struct pt_regs *regs)
+ 		(const char __user **)&PT_REGS_PARM1(regs);
+ 	long adb_ret = 0;
+ 
++	ksu_execve_hook_ksud(regs);
++
+ 	if (current->pid != 1 && is_init(current_cred())) {
+ 		ksu_sth_init_exec_tracker(*filename_user);
+ 		adb_ret = ksu_adb_root_handle_execve((struct pt_regs *)regs);
+@@ -166,6 +168,8 @@ static long ksu_sth_execveat(const struct pt_regs *regs)
+ 		(const char __user **)&PT_REGS_PARM2(regs);
+ 	long adb_ret = 0;
+ 
++	ksu_execveat_hook_ksud(regs);
++
+ 	// New bionic maps execve to execveat(AT_FDCWD, path, argv, envp, 0)
+ 	if ((int)PT_REGS_PARM1(regs) == AT_FDCWD &&
+ 	    (int)PT_REGS_SYSCALL_PARM4(regs) == 0) {
+diff --git a/kernel/runtime/ksud.h b/kernel/runtime/ksud.h
+index 0b800b6b..435ad71f 100644
+--- a/kernel/runtime/ksud.h
++++ b/kernel/runtime/ksud.h
+@@ -36,6 +36,10 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
+ 			     struct user_arg_ptr *argv,
+ 			     struct user_arg_ptr *envp, int *flags);
+ 
++struct pt_regs;
++void ksu_execve_hook_ksud(const struct pt_regs *regs);
++void ksu_execveat_hook_ksud(const struct pt_regs *regs);
++
+ void ksu_ksud_init();
+ void ksu_ksud_exit();
+ 
+diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
+index f3295f47..5dc4dedc 100644
+--- a/kernel/runtime/ksud_integration.c
++++ b/kernel/runtime/ksud_integration.c
+@@ -931,6 +931,20 @@ ksu_handle_execve_ksud(const char __user *filename_user,
+ 	return ksu_execve_ksud_common(filename_user, &argv);
+ }
+ 
++void ksu_execve_hook_ksud(const struct pt_regs *regs)
++{
++	ksu_handle_execve_ksud(
++		(const char __user *)PT_REGS_PARM1(regs),
++		(const char __user *const __user *)PT_REGS_PARM2(regs));
++}
++
++void ksu_execveat_hook_ksud(const struct pt_regs *regs)
++{
++	ksu_handle_execve_ksud(
++		(const char __user *)PT_REGS_PARM2(regs),
++		(const char __user *const __user *)PT_REGS_PARM3(regs));
++}
++
+ #if defined(CONFIG_COMPAT) && defined(CONFIG_64BIT)
+ int __maybe_unused ksu_handle_compat_execve_ksud(
+ 	const char __user *filename_user, const compat_uptr_t __user *__argv)
 diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
 index 258ca819..962af3ee 100644
 --- a/kernel/selinux/selinux.c
