@@ -1994,6 +1994,13 @@ static void smbchg_re_det_work(struct work_struct *work)
 		return;
 	}
 
+	/* HVDCP is a definitive DCP+QC result; rerunning APSD drops it */
+	if (smblib_get_apsd_result(chg)->bit & (QC_2P0_BIT | QC_3P0_BIT)) {
+		pr_info("re_det, skip rerun for HVDCP\n");
+		chg->redet_count = 0;
+		return;
+	}
+
 	if (chg->redet_count >= REDET_COUTNT) {
 		op_rerun_apsd(chg);
 		chg->usb_type_redet_done = true;
