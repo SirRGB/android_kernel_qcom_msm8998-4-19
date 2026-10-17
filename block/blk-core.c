@@ -2077,6 +2077,18 @@ static void handle_bad_sector(struct bio *bio, sector_t maxsector)
 			    bio_devname(bio, b), bio->bi_opf,
 			    (unsigned long long)bio_end_sector(bio),
 			    (long long)maxsector);
+
+	pr_err("loop-overread: task=%s pid=%d dev=%s partno=%u "
+	       "sector=%llu end=%llu bytes=%u opf=0x%x "
+	       "maxsector=%llu capacity=%llu\n",
+	       current->comm, task_pid_nr(current), bio_devname(bio, b),
+	       (unsigned int)bio->bi_partno,
+	       (unsigned long long)bio->bi_iter.bi_sector,
+	       (unsigned long long)bio_end_sector(bio),
+	       bio->bi_iter.bi_size, bio->bi_opf,
+	       (unsigned long long)maxsector,
+	       (unsigned long long)get_capacity(bio->bi_disk));
+	dump_stack();
 }
 
 #ifdef CONFIG_FAIL_MAKE_REQUEST
