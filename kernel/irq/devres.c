@@ -19,7 +19,10 @@ static void devm_irq_release(struct device *dev, void *res)
 {
 	struct irq_devres *this = res;
 
+	pr_info("DEVRES: release irq=%d dev=%s dev_id=%px\n",
+		this->irq, dev_name(dev), this->dev_id);
 	free_irq(this->irq, this->dev_id);
+	pr_info("DEVRES: released irq=%d dev=%s\n", this->irq, dev_name(dev));
 }
 
 static int devm_irq_match(struct device *dev, void *res, void *data)
