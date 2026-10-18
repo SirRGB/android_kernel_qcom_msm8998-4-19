@@ -1734,6 +1734,27 @@ static struct irqaction *__free_irq(struct irq_desc *desc, void *dev_id)
 	 */
 	__synchronize_hardirq(desc, true);
 
+	/*
+	 * Diagnostic only: the action is already unlinked and the threaded
+	 * handler is about to be stopped below. The thread still owns the
+	 * reference taken in __setup_irq(), so taking one here keeps it
+	 * alive while the fields are printed. state, cpu and affinity are
+	 * racing observations of a live task, not a coherent snapshot.
+	 */
+	if (action->thread) {
+		struct task_struct *t = action->thread;
+
+		get_task_struct(t);
+		pr_info("IRQFREE: irq=%u action=%px name=%s dev_id=%px thread=%d:%s state=%ld cpu=%d aff=%*pbl\n",
+			irq, action, action->name, action->dev_id,
+			t->pid, t->comm, READ_ONCE(t->state), task_cpu(t),
+			cpumask_pr_args(&t->cpus_allowed));
+		put_task_struct(t);
+	} else {
+		pr_info("IRQFREE: irq=%u action=%px name=%s dev_id=%px thread=none\n",
+			irq, action, action->name, action->dev_id);
+	}
+
 #ifdef CONFIG_DEBUG_SHIRQ
 	/*
 	 * It's a shared IRQ -- the driver ought to be prepared for an IRQ
@@ -1757,7 +1778,16 @@ static struct irqaction *__free_irq(struct irq_desc *desc, void *dev_id)
 	 * the same bit to a newly requested action.
 	 */
 	if (action->thread) {
-		kthread_stop(action->thread);
+		struct task_struct *t = action->thread;
+		int stopped;
+
+		get_task_struct(t);
+		pr_info("IRQFREE: irq=%u action=%px entering kthread_stop thread=%d:%s\n",
+			irq, action, t->pid, t->comm);
+		stopped = kthread_stop(t);
+		pr_info("IRQFREE: irq=%u action=%px kthread_stop thread=%d:%s returned %d\n",
+			irq, action, t->pid, t->comm, stopped);
+		put_task_struct(t);
 		put_task_struct(action->thread);
 		if (action->secondary && action->secondary->thread) {
 			kthread_stop(action->secondary->thread);
