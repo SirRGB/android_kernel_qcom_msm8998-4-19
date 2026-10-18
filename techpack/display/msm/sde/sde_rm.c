@@ -737,6 +737,7 @@ int sde_rm_init(struct sde_rm *rm,
 
 		if (lm->pingpong == PINGPONG_MAX) {
 			SDE_ERROR("mixer %d without pingpong\n", lm->id);
+			rc = -EINVAL;
 			goto fail;
 		}
 
