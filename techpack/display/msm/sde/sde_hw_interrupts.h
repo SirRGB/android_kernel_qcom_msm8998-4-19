@@ -298,6 +298,7 @@ struct sde_hw_intr {
 	struct sde_intr_reg *sde_irq_tbl;
 	u32 sde_irq_map_size;
 	struct sde_irq_type *sde_irq_map;
+	phys_addr_t dbg_phys;	/* DEBUG: mdp_phys base for attribution */
 	spinlock_t irq_lock;
 };
 

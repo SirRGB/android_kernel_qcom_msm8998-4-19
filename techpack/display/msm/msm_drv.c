@@ -1942,6 +1942,8 @@ static int msm_runtime_suspend(struct device *dev)
 
 	DBG("");
 
+	pr_info("sde8998dbg: rpm suspend mdss=%d\n", !!priv->mdss);
+
 	if (priv->mdss)
 		msm_mdss_disable(priv->mdss);
 	else
@@ -1962,6 +1964,8 @@ static int msm_runtime_resume(struct device *dev)
 		ret = msm_mdss_enable(priv->mdss);
 	else
 		ret = sde_power_resource_enable(&priv->phandle, true);
+
+	pr_info("sde8998dbg: rpm resume mdss=%d ret=%d\n", !!priv->mdss, ret);
 
 	return ret;
 }

@@ -6,7 +6,9 @@
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 
 #include <linux/debugfs.h>
+#include <linux/io.h>
 #include <linux/irqdomain.h>
+#include <linux/platform_device.h>
 #include <linux/irq.h>
 #include <linux/kthread.h>
 
@@ -443,6 +445,8 @@ void sde_debugfs_core_irq_destroy(struct sde_kms *sde_kms)
 
 void sde_core_irq_preinstall(struct sde_kms *sde_kms)
 {
+	struct platform_device *pdev;
+	struct resource *res;
 	int i;
 	int rc;
 
@@ -451,16 +455,35 @@ void sde_core_irq_preinstall(struct sde_kms *sde_kms)
 		return;
 	}
 
+	pdev = to_platform_device(sde_kms->dev->dev);
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+			"mdp_phys");
+	if (res)
+		sde_kms->hw_intr->dbg_phys = res->start;
+
+	pr_info("sde8998dbg: preinstall enter caller=%pS hw_rev=0x%x tbl=%px size=%u map=%u bits=0x%lx\n",
+		__builtin_return_address(0), sde_kms->core_rev,
+		sde_kms->hw_intr->sde_irq_tbl, sde_kms->hw_intr->sde_irq_size,
+		sde_kms->hw_intr->sde_irq_map_size,
+		sde_kms->catalog->mdss_irqs[0]);
+
 	rc = pm_runtime_get_sync(sde_kms->dev->dev);
+	pr_info("sde8998dbg: rpm get rc=%d usage=%d status=%d\n", rc,
+		atomic_read(&sde_kms->dev->dev->power.usage_count),
+		sde_kms->dev->dev->power.runtime_status);
 	if (rc < 0) {
 		SDE_ERROR("failed to enable power resource %d\n", rc);
 		SDE_EVT32(rc, SDE_EVTLOG_ERROR);
 		return;
 	}
 
+	dsb(sy);
+	pr_info("sde8998dbg: pre-write barrier ok\n");
 	sde_clear_all_irqs(sde_kms);
 	sde_disable_all_irqs(sde_kms);
-	pm_runtime_put_sync(sde_kms->dev->dev);
+	rc = pm_runtime_put_sync(sde_kms->dev->dev);
+	pr_info("sde8998dbg: rpm put rc=%d usage=%d; preinstall exit\n", rc,
+		atomic_read(&sde_kms->dev->dev->power.usage_count));
 
 	spin_lock_init(&sde_kms->irq_obj.cb_lock);
 

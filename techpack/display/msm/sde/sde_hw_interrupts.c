@@ -4,6 +4,7 @@
  */
 
 #include <linux/bitops.h>
+#include <linux/io.h>
 #include <linux/slab.h>
 
 #include "sde_kms.h"
@@ -761,16 +762,42 @@ static int sde_hw_intr_disable_irq_nolock(struct sde_hw_intr *intr, int irq_idx)
 	return 0;
 }
 
+static const char * const sde_intr_blk_name[MDSS_INTR_MAX] = {
+	[MDSS_INTR_SSPP_TOP0_INTR] = "TOP0",
+	[MDSS_INTR_SSPP_TOP0_INTR2] = "TOP0_2",
+	[MDSS_INTF_TEAR_1_INTR] = "INTF1_TEAR",
+	[MDSS_INTF_TEAR_2_INTR] = "INTF2_TEAR",
+	[MDSS_INTR_SSPP_TOP0_HIST_INTR] = "HIST",
+	[MDSS_INTR_INTF_0_INTR] = "INTF0",
+	[MDSS_INTR_INTF_1_INTR] = "INTF1",
+	[MDSS_INTR_INTF_2_INTR] = "INTF2",
+	[MDSS_INTR_INTF_3_INTR] = "INTF3",
+	[MDSS_INTR_INTF_4_INTR] = "INTF4",
+	[MDSS_INTR_AD4_0_INTR] = "AD4_0",
+	[MDSS_INTR_AD4_1_INTR] = "AD4_1",
+	[MDSS_INTR_LTM_0_INTR] = "LTM0",
+	[MDSS_INTR_LTM_1_INTR] = "LTM1",
+};
+
 static int sde_hw_intr_clear_irqs(struct sde_hw_intr *intr)
 {
 	int i;
+	u32 off;
 
 	if (!intr)
 		return -EINVAL;
 
-	for (i = 0; i < intr->sde_irq_size; i++)
+	for (i = 0; i < intr->sde_irq_size; i++) {
+		off = intr->hw.blk_off + intr->sde_irq_tbl[i].clr_off;
+		pr_info("sde8998dbg: clr[%d] %s idx=%d pa=%pa+0x%x val=0x%x begin\n",
+			i, sde_intr_blk_name[intr->sde_irq_tbl[i].sde_irq_idx],
+			intr->sde_irq_tbl[i].sde_irq_idx, &intr->dbg_phys, off,
+			0xffffffff);
 		SDE_REG_WRITE(&intr->hw, intr->sde_irq_tbl[i].clr_off,
 				0xffffffff);
+		dsb(sy);
+		pr_info("sde8998dbg: clr[%d] done\n", i);
+	}
 
 	/* ensure register writes go through */
 	wmb();
@@ -781,13 +808,21 @@ static int sde_hw_intr_clear_irqs(struct sde_hw_intr *intr)
 static int sde_hw_intr_disable_irqs(struct sde_hw_intr *intr)
 {
 	int i;
+	u32 off;
 
 	if (!intr)
 		return -EINVAL;
 
-	for (i = 0; i < intr->sde_irq_size; i++)
+	for (i = 0; i < intr->sde_irq_size; i++) {
+		off = intr->hw.blk_off + intr->sde_irq_tbl[i].en_off;
+		pr_info("sde8998dbg: dis[%d] %s idx=%d pa=%pa+0x%x val=0x0 begin\n",
+			i, sde_intr_blk_name[intr->sde_irq_tbl[i].sde_irq_idx],
+			intr->sde_irq_tbl[i].sde_irq_idx, &intr->dbg_phys, off);
 		SDE_REG_WRITE(&intr->hw, intr->sde_irq_tbl[i].en_off,
 				0x00000000);
+		dsb(sy);
+		pr_info("sde8998dbg: dis[%d] done\n", i);
+	}
 
 	/* ensure register writes go through */
 	wmb();
